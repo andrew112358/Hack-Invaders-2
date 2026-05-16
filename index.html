@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CapyCatch — Catch 'em All!</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="app">
+    <header class="hud">
+      <span id="location-name">Capy Meadows</span>
+      <span id="party-count">Party: 0</span>
+      <span id="balls-count">Capy Balls: 10</span>
+    </header>
+    <canvas id="game" width="640" height="480"></canvas>
+    <div id="battle-ui" class="hidden">
+      <div class="battle-panel">
+        <div class="battle-header">
+          <div class="wild-info">
+            <span id="wild-name" class="mon-name"></span>
+            <span id="wild-level" class="mon-level"></span>
+            <div class="hp-bar-wrap"><div id="wild-hp" class="hp-bar"></div></div>
+          </div>
+          <canvas id="wild-sprite" width="200" height="175"></canvas>
+        </div>
+        <p id="battle-message" class="battle-msg">A wild capybara appeared!</p>
+        <div id="battle-menu" class="battle-menu">
+          <button data-action="fight">Fight</button>
+          <button data-action="catch">Catch</button>
+          <button data-action="bag">Bag</button>
+          <button data-action="run">Run</button>
+        </div>
+        <div id="move-menu" class="battle-menu hidden">
+          <button data-move="0"></button>
+          <button data-move="1"></button>
+          <button data-move="2"></button>
+          <button data-move="3"></button>
+          <button data-action="back" class="back-btn">← Back</button>
+        </div>
+      </div>
+    </div>
+    <div id="dialog" class="dialog hidden">
+      <p id="dialog-text"></p>
+      <span class="dialog-hint">Press Space / Enter</span>
+    </div>
+    <div id="collection" class="collection hidden">
+      <h2>Your Capybaras</h2>
+      <div id="collection-grid"></div>
+      <button id="close-collection">Close (C)</button>
+    </div>
+    <footer class="controls-hint">
+      <span>Move: WASD / Arrows</span>
+      <span>Collection: C</span>
+      <span>Interact: Space</span>
+    </footer>
+  </div>
+  <script src="js/data.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
