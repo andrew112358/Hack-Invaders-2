@@ -621,6 +621,8 @@
 
   function startBattle() {
     state.mode = "battle";
+    resetBattler(state.wild);
+    if (state.activeMon) resetBattler(state.activeMon);
     battleUi.classList.remove("hidden");
     battleMenu.classList.remove("hidden");
     moveMenu.classList.add("hidden");
@@ -680,12 +682,20 @@
 
     const moveBtns = moveMenu.querySelectorAll("[data-move]");
     const moves = state.activeMon ? state.activeMon.moves : [];
+    const canPickMove =
+      state.battlePhase === "fight" &&
+      state.activeMon &&
+      state.activeMon.hp > 0;
     moveBtns.forEach((btn, i) => {
-      if (moves[i]) {
-        btn.textContent = moves[i].name;
-        btn.disabled = state.battlePhase !== "fight";
+      const move = moves[i];
+      if (move) {
+        const powerLabel = move.power > 0 ? ` · ${move.power}` : "";
+        btn.textContent = `${move.name}${powerLabel}`;
+        btn.className = `move-btn type-${move.type}`;
+        btn.disabled = !canPickMove;
       } else {
         btn.textContent = "—";
+        btn.className = "move-btn";
         btn.disabled = true;
       }
     });
@@ -694,7 +704,7 @@
   }
 
   function openBag() {
-    if (state.battlePhase === "catching") return;
+    if (state.battlePhase === "catching" || state.battlePhase === "animating") return;
     state.battlePhase = "bag";
     bagUi.classList.remove("hidden");
     battleMenu.classList.add("hidden");
@@ -774,15 +784,186 @@
     battleMsg.textContent = msg;
   }
 
+  const BATTLE_DELAY = 950;
+
+  function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function resetBattler(mon) {
+    mon.statStages = { atk: 0, def: 0 };
+  }
+
+  function ensureStages(mon) {
+    if (!mon.statStages) mon.statStages = { atk: 0, def: 0 };
+    return mon.statStages;
+  }
+
+  function stageMultiplier(stage) {
+    const table = [2 / 8, 2 / 7, 2 / 6, 2 / 5, 2 / 4, 2 / 3, 1, 2, 3, 4, 5, 6, 7, 8];
+    const idx = Math.max(0, Math.min(13, stage + 6));
+    return table[idx];
+  }
+
+  function effectiveStat(mon, stat) {
+    const stages = ensureStages(mon);
+    return Math.max(1, Math.floor(mon[stat] * stageMultiplier(stages[stat])));
+  }
+
+  function effectivenessText(eff) {
+    if (eff > 1) return " It's super effective!";
+    if (eff > 0 && eff < 1) return " It's not very effective...";
+    if (eff === 0) return " It had no effect!";
+    return "";
+  }
+
   function calcDamage(attacker, defender, move) {
-    if (move.power === 0) return 0;
+    if (!move.power) return { damage: 0, effectiveness: 1 };
     const effectiveness = getEffectiveness(move.type, defender.type);
+    if (effectiveness === 0) return { damage: 0, effectiveness: 0 };
     const stab = move.type === attacker.type ? 1.5 : 1;
-    const base = ((2 * attacker.level) / 5 + 2) * move.power * (attacker.atk / defender.def);
-    return Math.max(1, Math.floor((base / 50 + 2) * stab * effectiveness * (0.85 + Math.random() * 0.15)));
+    const atk = effectiveStat(attacker, "atk");
+    const def = Math.max(1, effectiveStat(defender, "def"));
+    const base = ((2 * attacker.level) / 5 + 2) * move.power * (atk / def);
+    const damage = Math.max(
+      1,
+      Math.floor((base / 50 + 2) * stab * effectiveness * (0.85 + Math.random() * 0.15))
+    );
+    return { damage, effectiveness };
+  }
+
+  function applyStatusMove(user, target, move) {
+    const userStages = ensureStages(user);
+    const targetStages = ensureStages(target);
+    switch (move.status) {
+      case "atkDown":
+        targetStages.atk = Math.max(-6, targetStages.atk - 1);
+        return `${user.name} used ${move.name}! ${target.name}'s Attack fell!`;
+      case "atkUp":
+        userStages.atk = Math.min(6, userStages.atk + 1);
+        return `${user.name} used ${move.name}! ${user.name}'s Attack rose!`;
+      case "defUp":
+        userStages.def = Math.min(6, userStages.def + 1);
+        return `${user.name} used ${move.name}! ${user.name}'s Defense rose!`;
+      case "accDown":
+        targetStages.def = Math.max(-6, targetStages.def - 1);
+        return `${user.name} used ${move.name}! ${target.name} was distracted!`;
+      default:
+        return `${user.name} used ${move.name}!`;
+    }
+  }
+
+  function flashSprite(canvasEl) {
+    canvasEl.classList.add("hit-flash");
+    setTimeout(() => canvasEl.classList.remove("hit-flash"), 220);
+  }
+
+  function lockBattleInput() {
+    state.battlePhase = "animating";
+    battleMenu.classList.add("hidden");
+    moveMenu.classList.add("hidden");
+    closeBag();
+  }
+
+  function unlockBattleMenu() {
+    if (state.mode !== "battle") return;
+    state.battlePhase = "menu";
+    battleMenu.classList.remove("hidden");
+    moveMenu.classList.add("hidden");
+    updateBattleUi();
+  }
+
+  function pickWildMove() {
+    const moves = state.wild.moves;
+    const damaging = moves.filter((m) => m.power > 0);
+    const status = moves.filter((m) => !m.power);
+    if (status.length && Math.random() < 0.28) {
+      return status[Math.floor(Math.random() * status.length)];
+    }
+    if (damaging.length) {
+      return damaging[Math.floor(Math.random() * damaging.length)];
+    }
+    return moves[Math.floor(Math.random() * moves.length)];
+  }
+
+  async function executeMove(attacker, defender, move, attackerIsPlayer) {
+    const targetCanvas = attackerIsPlayer ? wildSpriteCanvas : allySpriteCanvas;
+
+    if (!move.power) {
+      setBattleMessage(applyStatusMove(attacker, defender, move));
+      updateBattleUi();
+      return;
+    }
+
+    const { damage, effectiveness } = calcDamage(attacker, defender, move);
+    defender.hp = Math.max(0, defender.hp - damage);
+
+    let msg = `${attacker.name} used ${move.name}!`;
+    if (damage > 0) {
+      msg += ` ${damage} damage!`;
+      msg += effectivenessText(effectiveness);
+      flashSprite(targetCanvas);
+    } else {
+      msg += effectivenessText(effectiveness);
+    }
+
+    if (move.heal && damage > 0) {
+      const healed = Math.floor(damage / 2);
+      attacker.hp = Math.min(attacker.maxHp, attacker.hp + healed);
+      msg += ` ${attacker.name} recovered HP!`;
+    }
+
+    setBattleMessage(msg);
+    updateBattleUi();
+  }
+
+  async function handleWildFainted() {
+    const name = state.wild.name;
+    const exp = Math.floor(state.wild.level * 15 + 8);
+    setBattleMessage(`${name} fainted!`);
+    updateBattleUi();
+    await delay(900);
+    endBattle();
+    showDialog([
+      `You defeated wild ${name}!`,
+      `${state.activeMon.name} gained ${exp} EXP!`,
+    ]);
+  }
+
+  async function handleAllyFainted() {
+    const fainted = state.activeMon.name;
+    setBattleMessage(`${fainted} fainted!`);
+    updateBattleUi();
+    await delay(1000);
+
+    const next = state.party.find((m) => m.hp > 0);
+    if (next && next !== state.activeMon) {
+      state.activeMon = next;
+      setBattleMessage(`Go, ${next.name}!`);
+      updateBattleUi();
+      await delay(900);
+      unlockBattleMenu();
+      setBattleMessage("What will you do?");
+      return;
+    }
+
+    endBattle();
+    showDialog(["Your capybara fainted!", "You hurry away to recover..."]);
+  }
+
+  function switchToHealthyMon() {
+    if (state.activeMon && state.activeMon.hp > 0) return true;
+    const next = state.party.find((m) => m.hp > 0);
+    if (next) {
+      state.activeMon = next;
+      updateBattleUi();
+      return true;
+    }
+    return false;
   }
 
   function tryCatch() {
+    if (state.battlePhase === "animating") return;
     if (state.balls <= 0) {
       setBattleMessage("You're out of Capy Balls! Visit a shop or find pickups.");
       return;
@@ -841,42 +1022,43 @@
     setTimeout(anim, 800);
   }
 
-  function playerAttack(moveIndex) {
-    if (!state.activeMon) return;
+  async function playerAttack(moveIndex) {
+    if (!state.activeMon || state.battlePhase !== "fight") return;
     const move = state.activeMon.moves[moveIndex];
     if (!move) return;
-    const attacker = state.activeMon;
-    const dmg = calcDamage({ ...attacker, atk: attacker.atk + 10 }, state.wild, move);
-    state.wild.hp = Math.max(0, state.wild.hp - dmg);
-    const eff = getEffectiveness(move.type, state.wild.type);
-    let msg = `${attacker.name} used ${move.name}! It dealt ${dmg} damage.`;
-    if (eff > 1) msg += " Super effective!";
-    if (eff < 1 && eff > 0) msg += " Not very effective...";
-    if (eff === 0) msg = "It had no effect...";
-    setBattleMessage(msg);
-    updateBattleUi();
-    moveMenu.classList.add("hidden");
-    battleMenu.classList.remove("hidden");
-    state.battlePhase = "menu";
+    if (state.activeMon.hp <= 0) {
+      if (!switchToHealthyMon()) {
+        setBattleMessage("Your party can't fight!");
+        return;
+      }
+    }
+
+    lockBattleInput();
+
+    await executeMove(state.activeMon, state.wild, move, true);
+    await delay(BATTLE_DELAY);
 
     if (state.wild.hp <= 0) {
-      setTimeout(() => {
-        setBattleMessage(`${state.wild.name} fainted! You can't catch it now.`);
-        setTimeout(endBattle, 1500);
-      }, 1000);
+      await handleWildFainted();
       return;
     }
 
-    setTimeout(() => {
-      const wildMove = state.wild.moves[Math.floor(Math.random() * state.wild.moves.length)];
-      if (wildMove.power > 0 && state.activeMon) {
-        const wdmg = calcDamage(state.wild, state.activeMon, wildMove);
-        state.activeMon.hp = Math.max(0, state.activeMon.hp - wdmg);
-        setBattleMessage(`${state.wild.name} used ${wildMove.name}!`);
-      } else {
-        setBattleMessage(`${state.wild.name} is watching you carefully...`);
-      }
-    }, 1200);
+    if (state.activeMon.hp <= 0) {
+      await handleAllyFainted();
+      return;
+    }
+
+    const wildMove = pickWildMove();
+    await executeMove(state.wild, state.activeMon, wildMove, false);
+    await delay(BATTLE_DELAY);
+
+    if (state.activeMon.hp <= 0) {
+      await handleAllyFainted();
+      return;
+    }
+
+    unlockBattleMenu();
+    setBattleMessage("What will you do?");
   }
 
   function tryMove(dx, dy) {
@@ -1074,9 +1256,15 @@
         setBattleMessage("You have no capybara to fight with! Throw a ball!");
         return;
       }
+      if (!switchToHealthyMon()) {
+        setBattleMessage("Your party can't fight!");
+        return;
+      }
       battleMenu.classList.add("hidden");
       moveMenu.classList.remove("hidden");
       state.battlePhase = "fight";
+      updateBattleUi();
+      setBattleMessage(`Choose a move for ${state.activeMon.name}.`);
     } else if (action === "catch") {
       tryCatch();
     } else if (action === "bag") {
