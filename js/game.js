@@ -36,11 +36,15 @@
   const TILE_FLOWER = 4;
   const TILE_SAND = 5;
 
+  const PLAYER_HEIGHT = 46;
+
   const state = {
     mode: "overworld",
     spriteSheet: null,
     spriteW: 0,
     spriteH: 0,
+    playerSprite: null,
+    playerTrim: null,
     map: [],
     player: { x: 10, y: 8, dir: "down", frame: 0, moving: false },
     keys: {},
@@ -94,18 +98,62 @@
     return tile === TILE_GRASS || tile === TILE_FLOWER;
   }
 
-  function loadSprites() {
+  function loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => {
-        state.spriteSheet = img;
-        state.spriteW = Math.floor(img.width / SPRITE_COLS);
-        state.spriteH = Math.floor(img.height / SPRITE_ROWS);
-        resolve();
-      };
+      img.onload = () => resolve(img);
       img.onerror = reject;
-      img.src = "assets/capybaras.png";
+      img.src = src;
     });
+  }
+
+  function trimSpriteBounds(img) {
+    const c = document.createElement("canvas");
+    c.width = img.width;
+    c.height = img.height;
+    const cx = c.getContext("2d");
+    cx.drawImage(img, 0, 0);
+    const { data, width, height } = cx.getImageData(0, 0, c.width, c.height);
+    let minX = width;
+    let minY = height;
+    let maxX = 0;
+    let maxY = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+        const isBackground =
+          a < 12 ||
+          (r > 185 && g > 185 && b > 185 && Math.abs(r - g) < 20 && Math.abs(g - b) < 20);
+        if (!isBackground) {
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+    const pad = 6;
+    minX = Math.max(0, minX - pad);
+    minY = Math.max(0, minY - pad);
+    maxX = Math.min(width - 1, maxX + pad);
+    maxY = Math.min(height - 1, maxY + pad);
+    return { sx: minX, sy: minY, sw: maxX - minX + 1, sh: maxY - minY + 1 };
+  }
+
+  async function loadSprites() {
+    const [sheet, player] = await Promise.all([
+      loadImage("assets/capybaras.png"),
+      loadImage("assets/player.png"),
+    ]);
+    state.spriteSheet = sheet;
+    state.spriteW = Math.floor(sheet.width / SPRITE_COLS);
+    state.spriteH = Math.floor(sheet.height / SPRITE_ROWS);
+    state.playerSprite = player;
+    state.playerTrim = trimSpriteBounds(player);
   }
 
   function drawSprite(targetCtx, col, row, dx, dy, dw, dh) {
@@ -171,22 +219,29 @@
 
   function drawPlayer(px, py) {
     const bob = state.player.moving ? Math.sin(state.player.frame * 0.5) * 2 : 0;
-    const y = py + bob;
-    ctx.fillStyle = "#e74c3c";
-    ctx.fillRect(px + 10, y + 8, 12, 14);
-    ctx.fillStyle = "#f5c6a5";
-    ctx.fillRect(px + 11, y + 2, 10, 10);
-    ctx.fillStyle = "#2c3e50";
-    ctx.fillRect(px + 12, y + 5, 3, 3);
-    ctx.fillRect(px + 17, y + 5, 3, 3);
-    ctx.fillStyle = "#3498db";
-    ctx.fillRect(px + 8, y + 18, 6, 8);
-    ctx.fillRect(px + 18, y + 18, 6, 8);
-    const d = state.player.dir;
-    if (d === "down") {
-      ctx.fillStyle = "#2c3e50";
-      ctx.fillRect(px + 14, y + 12, 4, 2);
+
+    if (!state.playerSprite || !state.playerTrim) {
+      ctx.fillStyle = "#c4a574";
+      ctx.fillRect(px + 8, py + 20, 16, 10);
+      return;
     }
+
+    const { sx, sy, sw, sh } = state.playerTrim;
+    const drawH = PLAYER_HEIGHT;
+    const drawW = (sw / sh) * drawH;
+    const dx = px + (TILE - drawW) / 2;
+    const dy = py + TILE - drawH + bob;
+    const flip = state.player.dir === "left";
+
+    ctx.save();
+    if (flip) {
+      ctx.translate(dx + drawW, dy);
+      ctx.scale(-1, 1);
+      ctx.drawImage(state.playerSprite, sx, sy, sw, sh, 0, 0, drawW, drawH);
+    } else {
+      ctx.drawImage(state.playerSprite, sx, sy, sw, sh, dx, dy, drawW, drawH);
+    }
+    ctx.restore();
   }
 
   function renderOverworld() {
