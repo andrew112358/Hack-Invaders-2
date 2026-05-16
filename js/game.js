@@ -45,6 +45,8 @@
   const shopTitle = document.getElementById("shop-title");
   const shopCoinCount = document.getElementById("shop-coin-count");
   const shopItemsEl = document.getElementById("shop-items");
+  const switchMenu = document.getElementById("switch-menu");
+  const switchList = document.getElementById("switch-list");
 
   const state = {
     mode: "overworld",
@@ -58,6 +60,7 @@
     player: { x: 10, y: 8, dir: "down", frame: 0, moving: false },
     keys: {},
     party: [],
+    leadIndex: 0,
     balls: 10,
     berries: defaultBerryStock(),
     activeBerryBonus: 0,
@@ -120,6 +123,42 @@
     const area = getArea(state.areaId);
     const { x, y } = state.player;
     return area.npcs.find((npc) => Math.abs(npc.x - x) + Math.abs(npc.y - y) === 1);
+  }
+
+  function getLeadBattler() {
+    if (state.party.length === 0) return null;
+    const lead = state.party[state.leadIndex];
+    if (lead && lead.hp > 0) return lead;
+    return state.party.find((m) => m.hp > 0) || lead || null;
+  }
+
+  function setLeadPartyIndex(index) {
+    if (index < 0 || index >= state.party.length) return false;
+    state.leadIndex = index;
+    state.activeMon = state.party[index];
+    return true;
+  }
+
+  function healParty() {
+    for (const mon of state.party) {
+      mon.hp = mon.maxHp;
+      if (mon.statStages) mon.statStages = { atk: 0, def: 0 };
+    }
+    if (state.activeMon) {
+      const idx = state.party.indexOf(state.activeMon);
+      if (idx >= 0) state.leadIndex = idx;
+    }
+  }
+
+  function partyNeedsHeal() {
+    return state.party.some((m) => m.hp < m.maxHp);
+  }
+
+  function hpBarClass(hp, maxHp) {
+    const ratio = hp / maxHp;
+    if (ratio <= 0.25) return "critical";
+    if (ratio <= 0.5) return "low";
+    return "";
   }
 
   function collectItem(item) {
@@ -448,12 +487,24 @@
     ctx.fillRect(px + 8, py + 10, 16, 18);
     ctx.fillStyle = "#f5c6a5";
     ctx.fillRect(px + 10, py + 4, 12, 10);
-    ctx.fillStyle = "#2ecc71";
-    ctx.fillRect(px + 6, py + 22, 20, 6);
-    ctx.fillStyle = "#fff";
-    ctx.font = "6px 'Press Start 2P', monospace";
-    ctx.textAlign = "center";
-    ctx.fillText("SHOP", px + TILE / 2, py - 2);
+    if (npc.type === "heal") {
+      ctx.fillStyle = "#ff69b4";
+      ctx.fillRect(px + 6, py + 22, 20, 6);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(px + 14, py + 2, 4, 12);
+      ctx.fillRect(px + 10, py + 6, 12, 4);
+      ctx.fillStyle = "#fff";
+      ctx.font = "6px 'Press Start 2P', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("HEAL", px + TILE / 2, py - 2);
+    } else {
+      ctx.fillStyle = "#2ecc71";
+      ctx.fillRect(px + 6, py + 22, 20, 6);
+      ctx.fillStyle = "#fff";
+      ctx.font = "6px 'Press Start 2P', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("SHOP", px + TILE / 2, py - 2);
+    }
   }
 
   function drawPlayer(px, py) {
@@ -546,7 +597,8 @@
       ctx.fillStyle = "#7fdbca";
       ctx.font = "8px 'Press Start 2P', monospace";
       ctx.textAlign = "center";
-      ctx.fillText("Space — visit " + nearNpc.name, canvas.width / 2, canvas.height - 10);
+      const verb = nearNpc.type === "heal" ? "heal at" : "visit";
+      ctx.fillText(`Space — ${verb} ${nearNpc.name}`, canvas.width / 2, canvas.height - 10);
     }
 
     if (state.shakeTimer > 0 && isGrass(state.map[state.player.y][state.player.x])) {
@@ -611,7 +663,7 @@
   function pickWildEncounter() {
     const area = getArea(state.areaId);
     state.wild = createWildCapybara(null, area.encounterTypes);
-    state.activeMon = state.party[0] || null;
+    state.activeMon = getLeadBattler();
     state.battlePhase = "menu";
     state.catchAnim = 0;
     state.activeBerryBonus = 0;
@@ -634,6 +686,7 @@
   function endBattle() {
     battleUi.classList.add("hidden");
     closeBag();
+    closeSwitchMenu();
     state.mode = "overworld";
     state.wild = null;
     state.battlePhase = "menu";
@@ -862,6 +915,7 @@
     state.battlePhase = "animating";
     battleMenu.classList.add("hidden");
     moveMenu.classList.add("hidden");
+    closeSwitchMenu();
     closeBag();
   }
 
@@ -870,7 +924,99 @@
     state.battlePhase = "menu";
     battleMenu.classList.remove("hidden");
     moveMenu.classList.add("hidden");
+    closeSwitchMenu();
     updateBattleUi();
+  }
+
+  function closeSwitchMenu() {
+    if (switchMenu) switchMenu.classList.add("hidden");
+  }
+
+  function openSwitchMenu() {
+    if (state.party.length <= 1) {
+      setBattleMessage("You only have one capybara!");
+      return;
+    }
+    const healthy = state.party.filter((m) => m.hp > 0);
+    if (healthy.length === 0) {
+      setBattleMessage("No capybaras can battle!");
+      return;
+    }
+    state.battlePhase = "switch";
+    battleMenu.classList.add("hidden");
+    moveMenu.classList.add("hidden");
+    closeBag();
+    switchMenu.classList.remove("hidden");
+    renderSwitchMenu();
+    setBattleMessage("Choose a capybara to send out.");
+  }
+
+  function renderSwitchMenu() {
+    if (!switchList) return;
+    switchList.innerHTML = "";
+    state.party.forEach((mon, index) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "switch-option";
+      if (mon === state.activeMon) btn.classList.add("active");
+      if (mon.hp <= 0) btn.disabled = true;
+
+      const sprite = document.createElement("canvas");
+      sprite.width = 48;
+      sprite.height = 42;
+      const sctx = sprite.getContext("2d");
+      sctx.imageSmoothingEnabled = false;
+      drawCenteredCapySprite(sctx, mon.spriteCol, mon.spriteRow, 48, 42, false);
+
+      const info = document.createElement("div");
+      info.className = "switch-option-info";
+      const name = document.createElement("span");
+      name.className = "switch-option-name";
+      name.textContent = mon.name + (mon === state.activeMon ? " (out)" : "");
+      const meta = document.createElement("span");
+      meta.className = "switch-option-meta";
+      meta.textContent =
+        mon.hp <= 0
+          ? "Fainted"
+          : `Lv.${mon.level} · HP ${mon.hp}/${mon.maxHp}`;
+      info.appendChild(name);
+      info.appendChild(meta);
+
+      btn.appendChild(sprite);
+      btn.appendChild(info);
+      btn.addEventListener("click", () => switchBattlerInBattle(index));
+      switchList.appendChild(btn);
+    });
+  }
+
+  async function switchBattlerInBattle(partyIndex) {
+    const mon = state.party[partyIndex];
+    if (!mon || mon.hp <= 0) return;
+    if (mon === state.activeMon) {
+      setBattleMessage(`${mon.name} is already battling!`);
+      return;
+    }
+    if (state.battlePhase !== "switch") return;
+
+    closeSwitchMenu();
+    lockBattleInput();
+    setLeadPartyIndex(partyIndex);
+    resetBattler(state.activeMon);
+    setBattleMessage(`Come back! Go, ${mon.name}!`);
+    updateBattleUi();
+    await delay(BATTLE_DELAY);
+
+    const wildMove = pickWildMove();
+    await executeMove(state.wild, state.activeMon, wildMove, false);
+    await delay(BATTLE_DELAY);
+
+    if (state.activeMon.hp <= 0) {
+      await handleAllyFainted();
+      return;
+    }
+
+    unlockBattleMenu();
+    setBattleMessage("What will you do?");
   }
 
   function pickWildMove() {
@@ -924,10 +1070,10 @@
     updateBattleUi();
     await delay(900);
     endBattle();
-    showDialog([
-      `You defeated wild ${name}!`,
-      `${state.activeMon.name} gained ${exp} EXP!`,
-    ]);
+    const expMsg = state.activeMon
+      ? `${state.activeMon.name} gained ${exp} EXP!`
+      : `Your team gained ${exp} EXP!`;
+    showDialog([`You defeated wild ${name}!`, expMsg]);
   }
 
   async function handleAllyFainted() {
@@ -938,7 +1084,8 @@
 
     const next = state.party.find((m) => m.hp > 0);
     if (next && next !== state.activeMon) {
-      state.activeMon = next;
+      const idx = state.party.indexOf(next);
+      setLeadPartyIndex(idx);
       setBattleMessage(`Go, ${next.name}!`);
       updateBattleUi();
       await delay(900);
@@ -948,14 +1095,17 @@
     }
 
     endBattle();
-    showDialog(["Your capybara fainted!", "You hurry away to recover..."]);
+    showDialog([
+      "All your capybaras fainted!",
+      "Visit a Capy Care Center (pink HEAL sign) to recover.",
+    ]);
   }
 
   function switchToHealthyMon() {
     if (state.activeMon && state.activeMon.hp > 0) return true;
     const next = state.party.find((m) => m.hp > 0);
     if (next) {
-      state.activeMon = next;
+      setLeadPartyIndex(state.party.indexOf(next));
       updateBattleUi();
       return true;
     }
@@ -1108,13 +1258,40 @@
     if (state.mode !== "overworld") return;
 
     const npc = getNpcAdjacent();
-    if (npc && npc.type === "shop") {
-      openShop(npc);
+    if (npc) {
+      if (npc.type === "shop") openShop(npc);
+      else if (npc.type === "heal") openHealCenter(npc);
       return;
     }
 
     const item = getItemAt(state.player.x, state.player.y);
     if (item) collectItem(item);
+  }
+
+  function openHealCenter(npc) {
+    if (state.party.length === 0) {
+      showDialog(["You don't have any capybaras yet!"]);
+      return;
+    }
+    if (!partyNeedsHeal()) {
+      showDialog([
+        `Welcome to ${npc.name}!`,
+        "Your capybaras are already in perfect health!",
+      ]);
+      return;
+    }
+    const fainted = state.party.filter((m) => m.hp <= 0).length;
+    healParty();
+    updateHud();
+    const lines = [
+      `Welcome to ${npc.name}!`,
+      "Your capybaras have been fully restored!",
+    ];
+    if (fainted > 0) {
+      lines.push(`Revived ${fainted} fainted capybara(s).`);
+    }
+    lines.push("Take care out there!");
+    showDialog(lines);
   }
 
   function openShop(npc) {
@@ -1157,9 +1334,17 @@
     const slots = Math.max(6, state.party.length);
     for (let i = 0; i < slots; i++) {
       const card = document.createElement("div");
-      card.className = "collection-card" + (state.party[i] ? "" : " empty-slot");
-      if (state.party[i]) {
-        const mon = state.party[i];
+      const mon = state.party[i];
+      card.className = "collection-card" + (mon ? "" : " empty-slot");
+      if (mon) {
+        if (i === state.leadIndex) card.classList.add("active-lead");
+        if (mon.hp <= 0) card.classList.add("fainted");
+        if (i === state.leadIndex) {
+          const badge = document.createElement("span");
+          badge.className = "lead-badge";
+          badge.textContent = "LEAD";
+          card.appendChild(badge);
+        }
         const wrap = document.createElement("div");
         wrap.className = "collection-sprite-wrap";
         const c = document.createElement("canvas");
@@ -1178,6 +1363,29 @@
         type.textContent = `Lv.${mon.level} · ${mon.type}`;
         card.appendChild(name);
         card.appendChild(type);
+
+        const hpText = document.createElement("div");
+        hpText.className = "collection-hp";
+        hpText.textContent = mon.hp <= 0 ? "FAINTED" : `HP ${mon.hp} / ${mon.maxHp}`;
+        card.appendChild(hpText);
+
+        const hpWrap = document.createElement("div");
+        hpWrap.className = "collection-hp-bar-wrap";
+        const hpBar = document.createElement("div");
+        hpBar.className = "collection-hp-bar " + hpBarClass(mon.hp, mon.maxHp);
+        hpBar.style.width = `${Math.max(0, (mon.hp / mon.maxHp) * 100)}%`;
+        hpWrap.appendChild(hpBar);
+        card.appendChild(hpWrap);
+
+        card.addEventListener("click", () => {
+          if (mon.hp <= 0) {
+            showDialog([`${mon.name} has fainted!`, "Visit a Capy Care Center to heal."]);
+            return;
+          }
+          setLeadPartyIndex(i);
+          renderCollection();
+          showDialog(`${mon.name} is now your lead capybara!`);
+        });
       } else {
         card.textContent = "???";
       }
@@ -1216,7 +1424,7 @@
 
     state.keys[e.code] = true;
 
-    if (e.code === "KeyC" && state.mode !== "battle" && state.mode !== "shop") {
+    if ((e.code === "KeyC" || e.code === "KeyP") && state.mode !== "battle" && state.mode !== "shop") {
       toggleCollection();
       e.preventDefault();
     }
@@ -1270,6 +1478,8 @@
     } else if (action === "bag") {
       openBag();
       setBattleMessage(`Capy Balls: ${state.balls} · Coins: ${state.coins}`);
+    } else if (action === "switch") {
+      openSwitchMenu();
     } else if (action === "run") {
       if (Math.random() < 0.85) {
         setBattleMessage("Got away safely!");
@@ -1299,6 +1509,12 @@
     setBattleMessage("What will you do?");
   });
   document.getElementById("close-shop").addEventListener("click", closeShop);
+  document.querySelector("[data-action='switch-back']")?.addEventListener("click", () => {
+    closeSwitchMenu();
+    state.battlePhase = "menu";
+    battleMenu.classList.remove("hidden");
+    setBattleMessage("What will you do?");
+  });
 
   let moveCooldown = 0;
   function gameLoop() {
@@ -1344,11 +1560,12 @@
       [
         "Welcome to CapyCatch!",
         "Walk LEFT to Sunscorch Dunes. UP = forest, DOWN = volcano, RIGHT = beach.",
-        "Pick up items on the ground. Visit shops with Space. Good luck!",
+        "Press C or P for your party. Pink HEAL centers restore HP. Good luck!",
       ],
       () => {
         const starter = createOwnedCapybara("normal", 5);
         state.party.push(starter);
+        state.leadIndex = 0;
         state.activeMon = starter;
         updateHud();
         state.introDone = true;
