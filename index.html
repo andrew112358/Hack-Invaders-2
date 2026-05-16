@@ -15,8 +15,9 @@
       <span id="location-name">Capy Meadows</span>
       <span id="party-count">Party: 0</span>
       <span id="balls-count">Capy Balls: 10</span>
+      <span id="coins-count">Coins: 50</span>
     </header>
-    <canvas id="game" width="640" height="480"></canvas>
+    <canvas id="game" width="640" height="480" tabindex="0"></canvas>
     <div id="battle-ui" class="hidden">
       <div class="battle-screen">
         <div class="battle-arena">
@@ -87,7 +88,13 @@
     </div>
     <div id="dialog" class="dialog hidden">
       <p id="dialog-text"></p>
-      <span class="dialog-hint">Press Space / Enter</span>
+      <span class="dialog-hint">Space / Enter / WASD to continue</span>
+    </div>
+    <div id="shop-ui" class="shop hidden">
+      <h2 id="shop-title">Capy Mart</h2>
+      <p class="shop-coins">Your coins: <span id="shop-coin-count">0</span></p>
+      <div id="shop-items" class="shop-items"></div>
+      <button id="close-shop">Leave (Esc)</button>
     </div>
     <div id="collection" class="collection hidden">
       <h2>Your Capybaras</h2>
@@ -97,10 +104,11 @@
     <footer class="controls-hint">
       <span>Move: WASD / Arrows</span>
       <span>Collection: C</span>
-      <span>Interact: Space</span>
+      <span>Talk / Pick up: Space</span>
     </footer>
   </div>
   <script src="js/data.js"></script>
+  <script src="js/world.js"></script>
   <script src="js/game.js"></script>
 </body>
 </html>

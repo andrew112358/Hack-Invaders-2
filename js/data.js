@@ -128,11 +128,17 @@ function calcStat(base, level) {
   return Math.floor(base * (0.4 + level * 0.06));
 }
 
-function createWildCapybara(levelOverride) {
-  const roll = Math.random();
+function createWildCapybara(levelOverride, typeBias) {
+  let pool = CAPY_SPECIES;
+  if (typeBias && typeBias.length > 0) {
+    const biased = CAPY_SPECIES.filter((s) => typeBias.includes(s.type) || typeBias.includes(s.id));
+    if (biased.length > 0) pool = biased;
+  }
+  const totalRarity = pool.reduce((sum, s) => sum + s.rarity, 0);
+  const roll = Math.random() * totalRarity;
   let cumulative = 0;
-  let species = CAPY_SPECIES[0];
-  for (const s of CAPY_SPECIES) {
+  let species = pool[0];
+  for (const s of pool) {
     cumulative += s.rarity;
     if (roll <= cumulative) {
       species = s;
