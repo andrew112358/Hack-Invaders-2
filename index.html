@@ -60,7 +60,13 @@
           <button data-action="fight" class="menu-btn fight">Fight</button>
           <button data-action="catch" class="menu-btn catch">Catch</button>
           <button data-action="bag" class="menu-btn bag">Bag</button>
+          <button data-action="switch" class="menu-btn switch">Switch</button>
           <button data-action="run" class="menu-btn run">Run</button>
+        </div>
+        <div id="switch-menu" class="switch-panel hidden">
+          <h3 class="switch-title">Choose a capybara</h3>
+          <div id="switch-list" class="switch-list"></div>
+          <button type="button" data-action="switch-back" class="back-btn switch-back">← Back</button>
         </div>
         <div id="move-menu" class="battle-menu hidden">
           <button data-move="0"></button>
@@ -97,14 +103,15 @@
       <button id="close-shop">Leave (Esc)</button>
     </div>
     <div id="collection" class="collection hidden">
-      <h2>Your Capybaras</h2>
+      <h2>Your Party</h2>
+      <p class="party-hint">Click a capybara to set it as your lead.</p>
       <div id="collection-grid"></div>
-      <button id="close-collection">Close (C)</button>
+      <button id="close-collection">Close (C / P / Esc)</button>
     </div>
     <footer class="controls-hint">
       <span>Move: WASD / Arrows</span>
-      <span>Collection: C</span>
-      <span>Talk / Pick up: Space</span>
+      <span>Party: C or P</span>
+      <span>Talk / Heal: Space</span>
     </footer>
   </div>
   <script src="js/data.js"></script>

@@ -132,7 +132,10 @@ const WORLD_AREAS = {
       { id: "meadow-ball-1", x: 6, y: 4, type: "balls", amount: 3 },
       { id: "meadow-coin-1", x: 14, y: 9, type: "coins", amount: 25 },
     ],
-    npcs: [{ x: 11, y: 7, type: "shop", name: "Capy Mart" }],
+    npcs: [
+      { x: 11, y: 7, type: "shop", name: "Capy Mart" },
+      { x: 9, y: 7, type: "heal", name: "Capy Care Center" },
+    ],
   },
   desert: {
     id: "desert",
@@ -165,7 +168,10 @@ const WORLD_AREAS = {
       { id: "beach-ball-1", x: 12, y: 5, type: "balls", amount: 4 },
       { id: "beach-coin-1", x: 8, y: 11, type: "coins", amount: 35 },
     ],
-    npcs: [{ x: 14, y: 8, type: "shop", name: "Beach Ball Hut" }],
+    npcs: [
+      { x: 14, y: 8, type: "shop", name: "Beach Ball Hut" },
+      { x: 12, y: 8, type: "heal", name: "Bay Healing Hut" },
+    ],
   },
   forest: {
     id: "forest",

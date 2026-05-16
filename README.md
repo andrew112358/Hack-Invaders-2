@@ -16,9 +16,9 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 | Key | Action |
 |-----|--------|
 | WASD / Arrow keys | Walk |
-| Space / Enter | Talk to shop / pick up items |
-| C | Open collection |
-| Esc | Leave shop |
+| Space / Enter | Talk to shop / heal center / pick up items |
+| C or P | Open party — switch lead capybara |
+| Esc | Leave shop or party screen |
 
 ## World map
 
@@ -42,8 +42,14 @@ Follow the paths to the map edges (arrows mark exits).
   - 10 balls — 55 coins
 - You start with **50 coins** and **10 Capy Balls**.
 
+## Party & healing
+
+- **Party (C or P)** — View your team, HP bars, and click a capybara to set it as your **lead** (first into battle).
+- **Switch in battle** — Use the **Switch** menu option; the wild capybara gets a free attack after you swap.
+- **Healing centers** — Pink **HEAL** signs in Capy Meadows and Bubble Bay. Press **Space** nearby for free full restore (revives fainted capybaras too).
+
 ## Gameplay
 
 - Walk through grass for random encounters (rates vary by region).
-- In battle: Fight, Catch, Bag, or Run.
+- In battle: Fight, Catch, Bag, Switch, or Run.
 - Catch all six: Capybuddy, Mossbara, Emberbara, Voltbara, Aquabara, Zenbara.
