@@ -163,6 +163,94 @@ function createWildCapybara(levelOverride, typeBias) {
   };
 }
 
+const BERRIES = [
+  {
+    id: "razz",
+    name: "Razz Berry",
+    desc: "Makes capybaras easier to catch.",
+    catchBonus: 0.12,
+    color: "#e11d48",
+    emoji: "🍓",
+  },
+  {
+    id: "nanab",
+    name: "Nanab Berry",
+    desc: "Calms wild capybaras for better catches.",
+    catchBonus: 0.15,
+    color: "#f59e0b",
+    emoji: "🍌",
+  },
+  {
+    id: "pinap",
+    name: "Pinap Berry",
+    desc: "Strong catch boost when thrown.",
+    catchBonus: 0.22,
+    color: "#ea580c",
+    emoji: "🍍",
+  },
+  {
+    id: "oran",
+    name: "Oran Berry",
+    desc: "A reliable catch helper.",
+    catchBonus: 0.1,
+    color: "#2563eb",
+    emoji: "🔵",
+  },
+  {
+    id: "pecha",
+    name: "Pecha Berry",
+    desc: "Sweet berry — great for catching.",
+    catchBonus: 0.18,
+    color: "#ec4899",
+    emoji: "🌸",
+  },
+  {
+    id: "sitrus",
+    name: "Sitrus Berry",
+    desc: "Powerful catch aid.",
+    catchBonus: 0.28,
+    color: "#ca8a04",
+    emoji: "🍊",
+  },
+  {
+    id: "lum",
+    name: "Lum Berry",
+    desc: "Extra effective on weakened foes.",
+    catchBonus: 0.1,
+    lowHpBonus: 0.25,
+    lowHpThreshold: 0.5,
+    color: "#84cc16",
+    emoji: "💚",
+  },
+  {
+    id: "leppa",
+    name: "Leppa Berry",
+    desc: "Best when the foe is nearly fainted.",
+    catchBonus: 0.08,
+    lowHpBonus: 0.32,
+    lowHpThreshold: 0.35,
+    color: "#a855f7",
+    emoji: "🫐",
+  },
+];
+
+function defaultBerryStock() {
+  const stock = {};
+  for (const b of BERRIES) stock[b.id] = 4;
+  return stock;
+}
+
+function getBerryCatchBonus(berryId, wildHp, wildMaxHp) {
+  const berry = BERRIES.find((b) => b.id === berryId);
+  if (!berry) return 0;
+  let bonus = berry.catchBonus;
+  if (berry.lowHpBonus && wildMaxHp > 0) {
+    const hpRatio = wildHp / wildMaxHp;
+    if (hpRatio <= berry.lowHpThreshold) bonus += berry.lowHpBonus;
+  }
+  return bonus;
+}
+
 function createOwnedCapybara(speciesId, level = 5) {
   const species = CAPY_SPECIES.find((s) => s.id === speciesId) || CAPY_SPECIES[0];
   const maxHp = calcStat(species.baseHp, level) + 10;
