@@ -2,11 +2,10 @@
   "use strict";
 
   const TILE = 32;
-  const MAP_W = 20;
-  const MAP_H = 15;
-  const ENCOUNTER_RATE = 0.18;
+  const ENCOUNTER_RATE_BASE = 0.18;
   const SPRITE_COLS = 3;
   const SPRITE_ROWS = 2;
+  const PLAYER_HEIGHT = 46;
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
@@ -24,22 +23,20 @@
   const moveMenu = document.getElementById("move-menu");
   const dialogEl = document.getElementById("dialog");
   const dialogText = document.getElementById("dialog-text");
+  const locationNameEl = document.getElementById("location-name");
   const partyCountEl = document.getElementById("party-count");
   const ballsCountEl = document.getElementById("balls-count");
+  const coinsCountEl = document.getElementById("coins-count");
   const collectionEl = document.getElementById("collection");
   const collectionGrid = document.getElementById("collection-grid");
-
-  const TILE_GRASS = 0;
-  const TILE_PATH = 1;
-  const TILE_WATER = 2;
-  const TILE_TREE = 3;
-  const TILE_FLOWER = 4;
-  const TILE_SAND = 5;
-
-  const PLAYER_HEIGHT = 46;
+  const shopUi = document.getElementById("shop-ui");
+  const shopTitle = document.getElementById("shop-title");
+  const shopCoinCount = document.getElementById("shop-coin-count");
+  const shopItemsEl = document.getElementById("shop-items");
 
   const state = {
     mode: "overworld",
+    areaId: "meadow",
     spriteSheet: null,
     spriteW: 0,
     spriteH: 0,
@@ -50,52 +47,75 @@
     keys: {},
     party: [],
     balls: 10,
+    coins: 50,
+    collectedItems: new Set(),
     wild: null,
     activeMon: null,
     battlePhase: "menu",
     dialogQueue: [],
     dialogCallback: null,
-    stepsInGrass: 0,
     introDone: false,
     shakeTimer: 0,
-    catchAnim: 0,
+    animTick: 0,
   };
 
-  function buildMap() {
-    const map = [];
-    for (let y = 0; y < MAP_H; y++) {
-      const row = [];
-      for (let x = 0; x < MAP_W; x++) {
-        const edge = x === 0 || y === 0 || x === MAP_W - 1 || y === MAP_H - 1;
-        if (edge) row.push(TILE_TREE);
-        else row.push(TILE_GRASS);
-      }
-      map.push(row);
-    }
-    for (let x = 3; x < 17; x++) {
-      map[7][x] = TILE_PATH;
-      map[8][x] = TILE_PATH;
-    }
-    for (let y = 3; y < 12; y++) {
-      map[y][10] = TILE_PATH;
-    }
-    map[4][4] = map[4][5] = map[5][4] = TILE_FLOWER;
-    map[10][14] = map[10][15] = map[11][14] = TILE_FLOWER;
-    map[3][14] = map[3][15] = map[4][15] = TILE_WATER;
-    map[11][3] = map[11][4] = map[12][3] = TILE_WATER;
-    map[2][8] = map[2][9] = TILE_SAND;
-    map[12][8] = TILE_SAND;
-    map[1][10] = TILE_TREE;
-    map[13][6] = TILE_TREE;
-    return map;
-  }
-
   function isWalkable(tile) {
-    return tile !== TILE_TREE && tile !== TILE_WATER;
+    return (
+      tile !== WORLD_TILE.TREE &&
+      tile !== WORLD_TILE.WATER &&
+      tile !== WORLD_TILE.CACTUS &&
+      tile !== WORLD_TILE.LAVA
+    );
   }
 
   function isGrass(tile) {
-    return tile === TILE_GRASS || tile === TILE_FLOWER;
+    return (
+      tile === WORLD_TILE.GRASS ||
+      tile === WORLD_TILE.FLOWER ||
+      tile === WORLD_TILE.DARK_GRASS
+    );
+  }
+
+  function loadArea(areaId, spawnX, spawnY) {
+    const area = getArea(areaId);
+    state.areaId = areaId;
+    state.map = area.build();
+    state.player.x = spawnX;
+    state.player.y = spawnY;
+    locationNameEl.textContent = area.name;
+  }
+
+  function changeArea(toId, spawnX, spawnY) {
+    loadArea(toId, spawnX, spawnY);
+    const area = getArea(toId);
+    showDialog(`Entered ${area.name}!`);
+  }
+
+  function getActiveItems() {
+    const area = getArea(state.areaId);
+    return area.items.filter((item) => !state.collectedItems.has(item.id));
+  }
+
+  function getItemAt(x, y) {
+    return getActiveItems().find((item) => item.x === x && item.y === y);
+  }
+
+  function getNpcAdjacent() {
+    const area = getArea(state.areaId);
+    const { x, y } = state.player;
+    return area.npcs.find((npc) => Math.abs(npc.x - x) + Math.abs(npc.y - y) === 1);
+  }
+
+  function collectItem(item) {
+    state.collectedItems.add(item.id);
+    if (item.type === "balls") {
+      state.balls += item.amount;
+      showDialog(`Found ${item.amount} Capy Balls!`);
+    } else if (item.type === "coins") {
+      state.coins += item.amount;
+      showDialog(`Found ${item.amount} coins!`);
+    }
+    updateHud();
   }
 
   function loadImage(src) {
@@ -108,40 +128,50 @@
   }
 
   function trimSpriteBounds(img) {
-    const c = document.createElement("canvas");
-    c.width = img.width;
-    c.height = img.height;
-    const cx = c.getContext("2d");
-    cx.drawImage(img, 0, 0);
-    const { data, width, height } = cx.getImageData(0, 0, c.width, c.height);
-    let minX = width;
-    let minY = height;
-    let maxX = 0;
-    let maxY = 0;
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const a = data[i + 3];
-        const isBackground =
-          a < 12 ||
-          (r > 185 && g > 185 && b > 185 && Math.abs(r - g) < 20 && Math.abs(g - b) < 20);
-        if (!isBackground) {
-          minX = Math.min(minX, x);
-          minY = Math.min(minY, y);
-          maxX = Math.max(maxX, x);
-          maxY = Math.max(maxY, y);
+    try {
+      const c = document.createElement("canvas");
+      c.width = img.width;
+      c.height = img.height;
+      const cx = c.getContext("2d");
+      cx.drawImage(img, 0, 0);
+      const { data, width, height } = cx.getImageData(0, 0, c.width, c.height);
+      let minX = width;
+      let minY = height;
+      let maxX = 0;
+      let maxY = 0;
+      const step = 4;
+      for (let y = 0; y < height; y += step) {
+        for (let x = 0; x < width; x += step) {
+          const i = (y * width + x) * 4;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const a = data[i + 3];
+          const isBackground =
+            a < 12 ||
+            (r > 185 && g > 185 && b > 185 && Math.abs(r - g) < 20 && Math.abs(g - b) < 20);
+          if (!isBackground) {
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          }
         }
       }
+      if (minX > maxX) {
+        return { sx: 0, sy: 0, sw: img.width, sh: img.height };
+      }
+      const pad = 8;
+      return {
+        sx: Math.max(0, minX - pad),
+        sy: Math.max(0, minY - pad),
+        sw: Math.min(width, maxX + pad) - Math.max(0, minX - pad),
+        sh: Math.min(height, maxY + pad) - Math.max(0, minY - pad),
+      };
+    } catch (err) {
+      console.warn("Sprite trim failed, using full image", err);
+      return { sx: 0, sy: 0, sw: img.width, sh: img.height };
     }
-    const pad = 6;
-    minX = Math.max(0, minX - pad);
-    minY = Math.max(0, minY - pad);
-    maxX = Math.min(width - 1, maxX + pad);
-    maxY = Math.min(height - 1, maxY + pad);
-    return { sx: minX, sy: minY, sw: maxX - minX + 1, sh: maxY - minY + 1 };
   }
 
   async function loadSprites() {
@@ -169,27 +199,34 @@
 
   function drawTile(tile, px, py) {
     switch (tile) {
-      case TILE_GRASS:
+      case WORLD_TILE.GRASS:
         ctx.fillStyle = "#4a7c23";
         ctx.fillRect(px, py, TILE, TILE);
         ctx.fillStyle = "#5a9c2a";
         ctx.fillRect(px + 4, py + 4, 4, 4);
         ctx.fillRect(px + 20, py + 18, 3, 3);
         break;
-      case TILE_PATH:
+      case WORLD_TILE.DARK_GRASS:
+        ctx.fillStyle = "#2d5a18";
+        ctx.fillRect(px, py, TILE, TILE);
+        ctx.fillStyle = "#3d7a28";
+        ctx.fillRect(px + 6, py + 8, 4, 4);
+        ctx.fillRect(px + 18, py + 20, 3, 3);
+        break;
+      case WORLD_TILE.PATH:
         ctx.fillStyle = "#c4a574";
         ctx.fillRect(px, py, TILE, TILE);
         ctx.fillStyle = "#b8956a";
         ctx.fillRect(px + 2, py + 14, 28, 2);
         break;
-      case TILE_WATER:
+      case WORLD_TILE.WATER:
         ctx.fillStyle = "#3d85c6";
         ctx.fillRect(px, py, TILE, TILE);
         ctx.fillStyle = "#6eb5e8";
         ctx.fillRect(px + 6, py + 8, 8, 4);
         ctx.fillRect(px + 18, py + 20, 6, 3);
         break;
-      case TILE_TREE:
+      case WORLD_TILE.TREE:
         ctx.fillStyle = "#2d5016";
         ctx.fillRect(px, py, TILE, TILE);
         ctx.fillStyle = "#1a3d0a";
@@ -199,7 +236,7 @@
         ctx.arc(px + 16, py + 10, 12, 0, Math.PI * 2);
         ctx.fill();
         break;
-      case TILE_FLOWER:
+      case WORLD_TILE.FLOWER:
         ctx.fillStyle = "#4a7c23";
         ctx.fillRect(px, py, TILE, TILE);
         ctx.fillStyle = "#ff69b4";
@@ -207,9 +244,35 @@
         ctx.fillStyle = "#ffd700";
         ctx.fillRect(px + 14, py + 12, 4, 4);
         break;
-      case TILE_SAND:
+      case WORLD_TILE.SAND:
         ctx.fillStyle = "#e8d4a8";
         ctx.fillRect(px, py, TILE, TILE);
+        ctx.fillStyle = "#dcc898";
+        ctx.fillRect(px + 8, py + 12, 6, 2);
+        break;
+      case WORLD_TILE.CACTUS:
+        ctx.fillStyle = "#e8d4a8";
+        ctx.fillRect(px, py, TILE, TILE);
+        ctx.fillStyle = "#3d8b4a";
+        ctx.fillRect(px + 14, py + 6, 4, 20);
+        ctx.fillRect(px + 8, py + 10, 16, 4);
+        ctx.fillRect(px + 10, py + 4, 8, 4);
+        break;
+      case WORLD_TILE.ROCK:
+        ctx.fillStyle = "#5a5a5a";
+        ctx.fillRect(px, py, TILE, TILE);
+        ctx.fillStyle = "#7a7a7a";
+        ctx.fillRect(px + 6, py + 8, 20, 14);
+        ctx.fillStyle = "#4a4a4a";
+        ctx.fillRect(px + 10, py + 12, 12, 8);
+        break;
+      case WORLD_TILE.LAVA:
+        ctx.fillStyle = "#5a5a5a";
+        ctx.fillRect(px, py, TILE, TILE);
+        ctx.fillStyle = "#ff6b35";
+        ctx.fillRect(px + 4, py + 4, 24, 24);
+        ctx.fillStyle = "#ffd700";
+        ctx.fillRect(px + 10, py + 10, 12, 8);
         break;
       default:
         ctx.fillStyle = "#4a7c23";
@@ -217,22 +280,63 @@
     }
   }
 
+  function drawGroundItem(px, py, item) {
+    const bob = Math.sin(state.animTick * 0.08 + item.x) * 3;
+    const cy = py + TILE / 2 + bob;
+
+    if (item.type === "balls") {
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(px + TILE / 2, cy, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#e74c3c";
+      ctx.beginPath();
+      ctx.arc(px + TILE / 2, cy, 8, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#333";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(px + TILE / 2, cy, 8, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (item.type === "coins") {
+      ctx.fillStyle = "#ffd700";
+      ctx.beginPath();
+      ctx.arc(px + TILE / 2, cy, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#daa520";
+      ctx.font = "8px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("$", px + TILE / 2, cy + 3);
+    }
+  }
+
+  function drawNpc(px, py, npc) {
+    ctx.fillStyle = "#8b4513";
+    ctx.fillRect(px + 8, py + 10, 16, 18);
+    ctx.fillStyle = "#f5c6a5";
+    ctx.fillRect(px + 10, py + 4, 12, 10);
+    ctx.fillStyle = "#2ecc71";
+    ctx.fillRect(px + 6, py + 22, 20, 6);
+    ctx.fillStyle = "#fff";
+    ctx.font = "6px 'Press Start 2P', monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("SHOP", px + TILE / 2, py - 2);
+  }
+
   function drawPlayer(px, py) {
     const bob = state.player.moving ? Math.sin(state.player.frame * 0.5) * 2 : 0;
-
     if (!state.playerSprite || !state.playerTrim) {
       ctx.fillStyle = "#c4a574";
       ctx.fillRect(px + 8, py + 20, 16, 10);
       return;
     }
-
     const { sx, sy, sw, sh } = state.playerTrim;
+    if (!sw || !sh) return;
     const drawH = PLAYER_HEIGHT;
     const drawW = (sw / sh) * drawH;
     const dx = px + (TILE - drawW) / 2;
     const dy = py + TILE - drawH + bob;
     const flip = state.player.dir === "left";
-
     ctx.save();
     if (flip) {
       ctx.translate(dx + drawW, dy);
@@ -244,12 +348,32 @@
     ctx.restore();
   }
 
+  function drawTransitionHints(camX, camY) {
+    const area = getArea(state.areaId);
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.font = "8px 'Press Start 2P', monospace";
+    for (const t of area.transitions) {
+      const px = t.x * TILE - camX + TILE / 2;
+      const py = t.y * TILE - camY - 4;
+      if (t.x === 0) ctx.fillText("→", px - 4, py);
+      else if (t.x === MAP_W - 1) ctx.fillText("←", px - 4, py);
+      else if (t.y === 0) ctx.fillText("↓", px - 4, py);
+      else if (t.y === MAP_H - 1) ctx.fillText("↑", px - 4, py);
+    }
+  }
+
   function renderOverworld() {
     ctx.fillStyle = "#1a1a2e";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const camX = Math.max(0, Math.min(state.player.x * TILE - canvas.width / 2 + TILE / 2, MAP_W * TILE - canvas.width));
-    const camY = Math.max(0, Math.min(state.player.y * TILE - canvas.height / 2 + TILE / 2, MAP_H * TILE - canvas.height));
+    const camX = Math.max(
+      0,
+      Math.min(state.player.x * TILE - canvas.width / 2 + TILE / 2, MAP_W * TILE - canvas.width)
+    );
+    const camY = Math.max(
+      0,
+      Math.min(state.player.y * TILE - canvas.height / 2 + TILE / 2, MAP_H * TILE - canvas.height)
+    );
 
     for (let y = 0; y < MAP_H; y++) {
       for (let x = 0; x < MAP_W; x++) {
@@ -260,9 +384,37 @@
       }
     }
 
+    for (const item of getActiveItems()) {
+      const px = item.x * TILE - camX;
+      const py = item.y * TILE - camY;
+      if (px > -TILE && py > -TILE && px < canvas.width && py < canvas.height) {
+        drawGroundItem(px, py, item);
+      }
+    }
+
+    const area = getArea(state.areaId);
+    for (const npc of area.npcs) {
+      const px = npc.x * TILE - camX;
+      const py = npc.y * TILE - camY;
+      if (px > -TILE && py > -TILE && px < canvas.width && py < canvas.height) {
+        drawNpc(px, py, npc);
+      }
+    }
+
     const px = state.player.x * TILE - camX;
     const py = state.player.y * TILE - camY;
     drawPlayer(px, py);
+    drawTransitionHints(camX, camY);
+
+    const nearNpc = getNpcAdjacent();
+    if (nearNpc) {
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(0, canvas.height - 28, canvas.width, 28);
+      ctx.fillStyle = "#7fdbca";
+      ctx.font = "8px 'Press Start 2P', monospace";
+      ctx.textAlign = "center";
+      ctx.fillText("Space — visit " + nearNpc.name, canvas.width / 2, canvas.height - 10);
+    }
 
     if (state.shakeTimer > 0 && isGrass(state.map[state.player.y][state.player.x])) {
       ctx.fillStyle = "rgba(255,255,255,0.15)";
@@ -272,11 +424,31 @@
   }
 
   function updateHud() {
-    partyCountEl.textContent = `Party: ${state.party.length}`;
-    ballsCountEl.textContent = `Capy Balls: ${state.balls}`;
+    if (partyCountEl) partyCountEl.textContent = `Party: ${state.party.length}`;
+    if (ballsCountEl) ballsCountEl.textContent = `Capy Balls: ${state.balls}`;
+    if (coinsCountEl) coinsCountEl.textContent = `Coins: ${state.coins}`;
+    if (shopCoinCount) shopCoinCount.textContent = state.coins;
+  }
+
+  function focusGame() {
+    if (canvas && typeof canvas.focus === "function") canvas.focus();
+  }
+
+  function clearKeys() {
+    state.keys = {};
+  }
+
+  const MOVEMENT_KEYS = new Set([
+    "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    "KeyW", "KeyA", "KeyS", "KeyD",
+  ]);
+
+  function isMovementKey(code) {
+    return MOVEMENT_KEYS.has(code);
   }
 
   function showDialog(lines, callback) {
+    clearKeys();
     state.dialogQueue = Array.isArray(lines) ? [...lines] : [lines];
     state.dialogCallback = callback || null;
     state.mode = "dialog";
@@ -292,15 +464,22 @@
     dialogEl.classList.add("hidden");
     const cb = state.dialogCallback;
     state.dialogCallback = null;
+    state.mode = "overworld";
+    clearKeys();
     if (cb) cb();
-    else if (state.mode === "dialog") state.mode = "overworld";
+    focusGame();
+  }
+
+  function getEncounterRate() {
+    const area = getArea(state.areaId);
+    return area.encounterRate ?? ENCOUNTER_RATE_BASE;
   }
 
   function pickWildEncounter() {
-    state.wild = createWildCapybara();
+    const area = getArea(state.areaId);
+    state.wild = createWildCapybara(null, area.encounterTypes);
     state.activeMon = state.party[0] || null;
     state.battlePhase = "menu";
-    state.catchAnim = 0;
     startBattle();
   }
 
@@ -350,7 +529,6 @@
       if (moves[i]) {
         btn.textContent = moves[i].name;
         btn.disabled = state.battlePhase !== "fight";
-        btn.classList.remove("hidden");
       } else {
         btn.textContent = "—";
         btn.disabled = true;
@@ -373,7 +551,7 @@
 
   function tryCatch() {
     if (state.balls <= 0) {
-      setBattleMessage("You're out of Capy Balls!");
+      setBattleMessage("You're out of Capy Balls! Visit a shop or find pickups.");
       return;
     }
     state.balls--;
@@ -417,17 +595,8 @@
     if (!state.activeMon) return;
     const move = state.activeMon.moves[moveIndex];
     if (!move) return;
-    const attacker = state.activeMon || {
-      name: "You",
-      level: 5,
-      atk: 30,
-      type: "normal",
-    };
-    const dmg = calcDamage(
-      { ...attacker, atk: attacker.atk + 10 },
-      state.wild,
-      move
-    );
+    const attacker = state.activeMon;
+    const dmg = calcDamage({ ...attacker, atk: attacker.atk + 10 }, state.wild, move);
     state.wild.hp = Math.max(0, state.wild.hp - dmg);
     const eff = getEffectiveness(move.type, state.wild.type);
     let msg = `${attacker.name} used ${move.name}! It dealt ${dmg} damage.`;
@@ -462,9 +631,24 @@
 
   function tryMove(dx, dy) {
     if (state.mode !== "overworld") return;
+
     const nx = state.player.x + dx;
     const ny = state.player.y + dy;
-    if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H) return;
+
+    if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H) {
+      const edgeX = nx < 0 ? 0 : nx >= MAP_W ? MAP_W - 1 : state.player.x;
+      const edgeY = ny < 0 ? 0 : ny >= MAP_H ? MAP_H - 1 : state.player.y;
+      const trans = findTransition(state.areaId, edgeX, edgeY);
+      if (trans) {
+        if (dx > 0) state.player.dir = "right";
+        if (dx < 0) state.player.dir = "left";
+        if (dy > 0) state.player.dir = "down";
+        if (dy < 0) state.player.dir = "up";
+        changeArea(trans.to, trans.spawnX, trans.spawnY);
+      }
+      return;
+    }
+
     const tile = state.map[ny][nx];
     if (!isWalkable(tile)) return;
 
@@ -477,12 +661,63 @@
     if (dy > 0) state.player.dir = "down";
     if (dy < 0) state.player.dir = "up";
 
-    if (isGrass(tile) && Math.random() < ENCOUNTER_RATE) {
+    const item = getItemAt(nx, ny);
+    if (item) collectItem(item);
+
+    if (isGrass(tile) && Math.random() < getEncounterRate()) {
       state.shakeTimer = 12;
       setTimeout(() => {
         if (state.mode === "overworld") pickWildEncounter();
       }, 400);
     }
+  }
+
+  function tryInteract() {
+    if (state.mode !== "overworld") return;
+
+    const npc = getNpcAdjacent();
+    if (npc && npc.type === "shop") {
+      openShop(npc);
+      return;
+    }
+
+    const item = getItemAt(state.player.x, state.player.y);
+    if (item) collectItem(item);
+  }
+
+  function openShop(npc) {
+    state.mode = "shop";
+    shopTitle.textContent = npc.name;
+    shopUi.classList.remove("hidden");
+    renderShop();
+  }
+
+  function closeShop() {
+    shopUi.classList.add("hidden");
+    state.mode = "overworld";
+    clearKeys();
+    focusGame();
+  }
+
+  function renderShop() {
+    shopItemsEl.innerHTML = "";
+    shopCoinCount.textContent = state.coins;
+    for (const product of SHOP_ITEMS) {
+      const btn = document.createElement("button");
+      btn.textContent = `${product.label} — ${product.cost} coins`;
+      btn.disabled = state.coins < product.cost;
+      btn.addEventListener("click", () => buyProduct(product));
+      shopItemsEl.appendChild(btn);
+    }
+  }
+
+  function buyProduct(product) {
+    if (state.coins < product.cost) return;
+    state.coins -= product.cost;
+    state.balls += product.balls;
+    updateHud();
+    closeShop();
+    showDialog(`Bought ${product.label}!`);
   }
 
   function renderCollection() {
@@ -520,27 +755,62 @@
       renderCollection();
       collectionEl.classList.remove("hidden");
       state.mode = "collection";
+      clearKeys();
     } else {
       collectionEl.classList.add("hidden");
       state.mode = "overworld";
+      clearKeys();
+      focusGame();
     }
   }
 
-  document.addEventListener("keydown", (e) => {
+  function handleKeyDown(e) {
+    if (e.repeat) return;
+
+    if (state.mode === "dialog") {
+      if (e.code === "Space" || e.code === "Enter" || isMovementKey(e.code)) {
+        advanceDialog();
+        e.preventDefault();
+      }
+      return;
+    }
+
+    if (isMovementKey(e.code) && state.mode !== "battle") {
+      e.preventDefault();
+    }
+
     state.keys[e.code] = true;
-    if (e.code === "KeyC" && state.mode !== "battle" && state.mode !== "dialog") {
+
+    if (e.code === "KeyC" && state.mode !== "battle" && state.mode !== "shop") {
       toggleCollection();
       e.preventDefault();
     }
-    if ((e.code === "Space" || e.code === "Enter") && state.mode === "dialog") {
-      advanceDialog();
+    if (e.code === "Escape") {
+      if (state.mode === "shop") {
+        closeShop();
+        e.preventDefault();
+      } else if (state.mode === "collection") {
+        toggleCollection();
+        e.preventDefault();
+      }
+    }
+    if ((e.code === "Space" || e.code === "Enter") && state.mode === "overworld") {
+      tryInteract();
       e.preventDefault();
     }
-  });
+  }
 
-  document.addEventListener("keyup", (e) => {
+  function handleKeyUp(e) {
     state.keys[e.code] = false;
+  }
+
+  window.addEventListener("keydown", handleKeyDown, true);
+  window.addEventListener("keyup", handleKeyUp, true);
+  window.addEventListener("blur", clearKeys);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) clearKeys();
   });
+  canvas.addEventListener("click", focusGame);
 
   battleMenu.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-action]");
@@ -557,7 +827,7 @@
     } else if (action === "catch") {
       tryCatch();
     } else if (action === "bag") {
-      setBattleMessage(`Capy Balls: ${state.balls}. Use Catch to throw one!`);
+      setBattleMessage(`Capy Balls: ${state.balls} · Coins: ${state.coins}`);
     } else if (action === "run") {
       if (Math.random() < 0.85) {
         setBattleMessage("Got away safely!");
@@ -582,13 +852,17 @@
   });
 
   document.getElementById("close-collection").addEventListener("click", toggleCollection);
+  document.getElementById("close-shop").addEventListener("click", closeShop);
 
   let moveCooldown = 0;
   function gameLoop() {
+    state.animTick++;
+
     if (state.mode === "overworld") {
       if (moveCooldown > 0) moveCooldown--;
       else {
-        let dx = 0, dy = 0;
+        let dx = 0;
+        let dy = 0;
         if (state.keys["ArrowUp"] || state.keys["KeyW"]) dy = -1;
         else if (state.keys["ArrowDown"] || state.keys["KeyS"]) dy = 1;
         else if (state.keys["ArrowLeft"] || state.keys["KeyA"]) dx = -1;
@@ -601,25 +875,30 @@
           state.player.moving = false;
         }
       }
+    }
+
+    if (state.mode !== "battle") {
       renderOverworld();
     }
+
     requestAnimationFrame(gameLoop);
   }
 
   async function init() {
-    state.map = buildMap();
+    loadArea("meadow", 10, 8);
     try {
       await loadSprites();
     } catch (err) {
       console.error("Failed to load sprites", err);
     }
     updateHud();
+    focusGame();
     gameLoop();
     showDialog(
       [
         "Welcome to CapyCatch!",
-        "Professor Capy gave you a Capybuddy!",
-        "Walk through tall grass to find more. Press C for your collection.",
+        "Walk LEFT to Sunscorch Dunes. UP = forest, DOWN = volcano, RIGHT = beach.",
+        "Pick up items on the ground. Visit shops with Space. Good luck!",
       ],
       () => {
         const starter = createOwnedCapybara("normal", 5);
