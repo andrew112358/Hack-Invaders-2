@@ -19,9 +19,21 @@
   const wildSpriteCanvas = document.getElementById("wild-sprite");
   const wildSpriteCtx = wildSpriteCanvas.getContext("2d");
   wildSpriteCtx.imageSmoothingEnabled = false;
+  const allySpriteCanvas = document.getElementById("ally-sprite");
+  const allySpriteCtx = allySpriteCanvas.getContext("2d");
+  allySpriteCtx.imageSmoothingEnabled = false;
+  const allyNameEl = document.getElementById("ally-name");
+  const allyLevelEl = document.getElementById("ally-level");
+  const allyHpEl = document.getElementById("ally-hp");
+  const allyHpTextEl = document.getElementById("ally-hp-text");
+  const wildHpTextEl = document.getElementById("wild-hp-text");
+  const berryStatusEl = document.getElementById("berry-status");
   const battleMsg = document.getElementById("battle-message");
   const battleMenu = document.getElementById("battle-menu");
   const moveMenu = document.getElementById("move-menu");
+  const bagUi = document.getElementById("bag-ui");
+  const bagBallsEl = document.getElementById("bag-balls");
+  const bagBerriesEl = document.getElementById("bag-berries");
   const dialogEl = document.getElementById("dialog");
   const dialogText = document.getElementById("dialog-text");
   const partyCountEl = document.getElementById("party-count");
@@ -50,6 +62,10 @@
     keys: {},
     party: [],
     balls: 10,
+    berries: defaultBerryStock(),
+    activeBerryBonus: 0,
+    activeBerryName: null,
+    spriteCache: {},
     wild: null,
     activeMon: null,
     battlePhase: "menu",
@@ -154,17 +170,134 @@
     state.spriteH = Math.floor(sheet.height / SPRITE_ROWS);
     state.playerSprite = player;
     state.playerTrim = trimSpriteBounds(player);
+    for (let row = 0; row < SPRITE_ROWS; row++) {
+      for (let col = 0; col < SPRITE_COLS; col++) {
+        getProcessedSprite(col, row);
+      }
+    }
   }
 
-  function drawSprite(targetCtx, col, row, dx, dy, dw, dh) {
-    if (!state.spriteSheet) return;
-    const sx = col * state.spriteW;
-    const sy = row * state.spriteH;
-    targetCtx.drawImage(
+  function isBackgroundPixel(r, g, b, a) {
+    if (a < 12) return true;
+    const light = r > 175 && g > 175 && b > 175;
+    const neutral = Math.abs(r - g) < 28 && Math.abs(g - b) < 28;
+    return light && neutral;
+  }
+
+  function getProcessedSprite(col, row) {
+    const key = `${col},${row}`;
+    if (state.spriteCache[key]) return state.spriteCache[key];
+    if (!state.spriteSheet) return null;
+
+    const off = document.createElement("canvas");
+    off.width = state.spriteW;
+    off.height = state.spriteH;
+    const offCtx = off.getContext("2d");
+    offCtx.imageSmoothingEnabled = false;
+    offCtx.drawImage(
       state.spriteSheet,
-      sx, sy, state.spriteW, state.spriteH,
-      dx, dy, dw, dh
+      col * state.spriteW,
+      row * state.spriteH,
+      state.spriteW,
+      state.spriteH,
+      0,
+      0,
+      state.spriteW,
+      state.spriteH
     );
+
+    const imgData = offCtx.getImageData(0, 0, off.width, off.height);
+    const { data, width, height } = imgData;
+    let minX = width;
+    let minY = height;
+    let maxX = 0;
+    let maxY = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+        if (isBackgroundPixel(r, g, b, a)) {
+          data[i + 3] = 0;
+        } else {
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+    offCtx.putImageData(imgData, 0, 0);
+
+    const pad = 4;
+    minX = Math.max(0, minX - pad);
+    minY = Math.max(0, minY - pad);
+    maxX = Math.min(width - 1, maxX + pad);
+    maxY = Math.min(height - 1, maxY + pad);
+    const sw = maxX - minX + 1;
+    const sh = maxY - minY + 1;
+
+    const trimmed = document.createElement("canvas");
+    trimmed.width = sw;
+    trimmed.height = sh;
+    const tctx = trimmed.getContext("2d");
+    tctx.imageSmoothingEnabled = false;
+    tctx.drawImage(off, minX, minY, sw, sh, 0, 0, sw, sh);
+
+    const entry = { canvas: trimmed, w: sw, h: sh };
+    state.spriteCache[key] = entry;
+    return entry;
+  }
+
+  function drawCenteredCapySprite(targetCtx, col, row, canvasW, canvasH, flip) {
+    const sprite = getProcessedSprite(col, row);
+    targetCtx.clearRect(0, 0, canvasW, canvasH);
+    if (!sprite) return;
+
+    const maxH = canvasH * 0.92;
+    const maxW = canvasW * 0.92;
+    const scale = Math.min(maxW / sprite.w, maxH / sprite.h);
+    const dw = sprite.w * scale;
+    const dh = sprite.h * scale;
+    const dx = (canvasW - dw) / 2;
+    const dy = (canvasH - dh) / 2;
+
+    targetCtx.save();
+    if (flip) {
+      targetCtx.translate(dx + dw, dy);
+      targetCtx.scale(-1, 1);
+      targetCtx.drawImage(sprite.canvas, 0, 0, dw, dh);
+    } else {
+      targetCtx.drawImage(sprite.canvas, dx, dy, dw, dh);
+    }
+    targetCtx.restore();
+  }
+
+  function drawSprite(targetCtx, col, row, canvasW, canvasH) {
+    drawCenteredCapySprite(targetCtx, col, row, canvasW, canvasH, false);
+  }
+
+  function setHpBar(barEl, hp, maxHp) {
+    const ratio = maxHp > 0 ? hp / maxHp : 0;
+    barEl.style.width = `${ratio * 100}%`;
+    barEl.style.background =
+      ratio > 0.5
+        ? "linear-gradient(90deg, #4ade80, #22c55e)"
+        : ratio > 0.2
+          ? "linear-gradient(90deg, #fbbf24, #f59e0b)"
+          : "linear-gradient(90deg, #ef4444, #dc2626)";
+  }
+
+  function updateBerryStatus() {
+    if (state.activeBerryName) {
+      berryStatusEl.textContent = `${state.activeBerryName} active — next catch boosted!`;
+      berryStatusEl.classList.remove("hidden");
+    } else {
+      berryStatusEl.classList.add("hidden");
+    }
   }
 
   function drawTile(tile, px, py) {
@@ -301,6 +434,8 @@
     state.activeMon = state.party[0] || null;
     state.battlePhase = "menu";
     state.catchAnim = 0;
+    state.activeBerryBonus = 0;
+    state.activeBerryName = null;
     startBattle();
   }
 
@@ -309,40 +444,59 @@
     battleUi.classList.remove("hidden");
     battleMenu.classList.remove("hidden");
     moveMenu.classList.add("hidden");
+    closeBag();
     updateBattleUi();
     setBattleMessage(`Wild ${state.wild.name} appeared!`);
   }
 
   function endBattle() {
     battleUi.classList.add("hidden");
+    closeBag();
     state.mode = "overworld";
     state.wild = null;
     state.battlePhase = "menu";
+    state.activeBerryBonus = 0;
+    state.activeBerryName = null;
+    wildSpriteCanvas.style.transform = "";
   }
 
   function updateBattleUi() {
     const w = state.wild;
     wildNameEl.textContent = w.name;
     wildLevelEl.textContent = `Lv.${w.level} · ${w.type.toUpperCase()}`;
-    wildHpEl.style.width = `${(w.hp / w.maxHp) * 100}%`;
-    wildHpEl.style.background =
-      w.hp / w.maxHp > 0.5
-        ? "linear-gradient(90deg, #4ade80, #22c55e)"
-        : w.hp / w.maxHp > 0.2
-          ? "linear-gradient(90deg, #fbbf24, #f59e0b)"
-          : "linear-gradient(90deg, #ef4444, #dc2626)";
+    setHpBar(wildHpEl, w.hp, w.maxHp);
+    wildHpTextEl.textContent = `${w.hp} / ${w.maxHp}`;
 
-    wildSpriteCtx.clearRect(0, 0, wildSpriteCanvas.width, wildSpriteCanvas.height);
-    const pad = 10;
-    drawSprite(
+    drawCenteredCapySprite(
       wildSpriteCtx,
       w.spriteCol,
       w.spriteRow,
-      pad,
-      pad,
-      wildSpriteCanvas.width - pad * 2,
-      wildSpriteCanvas.height - pad * 2
+      wildSpriteCanvas.width,
+      wildSpriteCanvas.height,
+      false
     );
+
+    const ally = state.activeMon;
+    if (ally) {
+      allyNameEl.textContent = ally.name;
+      allyLevelEl.textContent = `Lv.${ally.level} · ${ally.type.toUpperCase()}`;
+      setHpBar(allyHpEl, ally.hp, ally.maxHp);
+      allyHpTextEl.textContent = `${ally.hp} / ${ally.maxHp}`;
+      drawCenteredCapySprite(
+        allySpriteCtx,
+        ally.spriteCol,
+        ally.spriteRow,
+        allySpriteCanvas.width,
+        allySpriteCanvas.height,
+        true
+      );
+    } else {
+      allyNameEl.textContent = "—";
+      allyLevelEl.textContent = "No ally";
+      setHpBar(allyHpEl, 0, 1);
+      allyHpTextEl.textContent = "";
+      allySpriteCtx.clearRect(0, 0, allySpriteCanvas.width, allySpriteCanvas.height);
+    }
 
     const moveBtns = moveMenu.querySelectorAll("[data-move]");
     const moves = state.activeMon ? state.activeMon.moves : [];
@@ -356,7 +510,85 @@
         btn.disabled = true;
       }
     });
+    updateBerryStatus();
     updateHud();
+  }
+
+  function openBag() {
+    if (state.battlePhase === "catching") return;
+    state.battlePhase = "bag";
+    bagUi.classList.remove("hidden");
+    battleMenu.classList.add("hidden");
+    moveMenu.classList.add("hidden");
+    renderBag();
+    setBattleMessage("Choose an item from your bag.");
+  }
+
+  function closeBag() {
+    bagUi.classList.add("hidden");
+    if (state.mode === "battle" && state.battlePhase === "bag") {
+      state.battlePhase = "menu";
+      battleMenu.classList.remove("hidden");
+    }
+  }
+
+  function renderBag() {
+    bagBallsEl.innerHTML = "";
+    const ballBtn = document.createElement("button");
+    ballBtn.type = "button";
+    ballBtn.className = "bag-item";
+    ballBtn.disabled = state.balls <= 0 || state.battlePhase === "catching";
+    ballBtn.innerHTML = `
+      <div class="bag-item-top">
+        <span class="bag-item-icon" style="background:#dbeafe">⚾</span>
+        <span class="bag-item-name">Capy Ball</span>
+        <span class="bag-item-count">×${state.balls}</span>
+      </div>
+      <span class="bag-item-desc">Throw to catch wild capybaras.</span>
+    `;
+    ballBtn.addEventListener("click", () => {
+      closeBag();
+      tryCatch();
+    });
+    bagBallsEl.appendChild(ballBtn);
+
+    bagBerriesEl.innerHTML = "";
+    for (const berry of BERRIES) {
+      const count = state.berries[berry.id] || 0;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "bag-item" + (state.activeBerryName === berry.name ? " active-berry" : "");
+      btn.disabled = count <= 0 || state.battlePhase === "catching";
+      btn.innerHTML = `
+        <div class="bag-item-top">
+          <span class="bag-item-icon" style="background:${berry.color}22">${berry.emoji}</span>
+          <span class="bag-item-name">${berry.name}</span>
+          <span class="bag-item-count">×${count}</span>
+        </div>
+        <span class="bag-item-desc">${berry.desc}</span>
+      `;
+      btn.addEventListener("click", () => useBerry(berry));
+      bagBerriesEl.appendChild(btn);
+    }
+  }
+
+  function useBerry(berry) {
+    if ((state.berries[berry.id] || 0) <= 0) return;
+    state.berries[berry.id]--;
+    state.activeBerryBonus = getBerryCatchBonus(
+      berry.id,
+      state.wild.hp,
+      state.wild.maxHp
+    );
+    state.activeBerryName = berry.name;
+    closeBag();
+    state.battlePhase = "menu";
+    battleMenu.classList.remove("hidden");
+    updateBerryStatus();
+    renderBag();
+    setBattleMessage(
+      `You fed the wild ${state.wild.name} a ${berry.name}! Catch rate boosted.`
+    );
   }
 
   function setBattleMessage(msg) {
@@ -376,13 +608,27 @@
       setBattleMessage("You're out of Capy Balls!");
       return;
     }
+    if (state.wild.hp <= 0) {
+      setBattleMessage("You can't catch a fainted capybara!");
+      return;
+    }
     state.balls--;
     updateHud();
     state.battlePhase = "catching";
     battleMenu.classList.add("hidden");
+    moveMenu.classList.add("hidden");
+    closeBag();
+
+    const berryBonus = state.activeBerryBonus;
+    const berryUsed = state.activeBerryName;
+    state.activeBerryBonus = 0;
+    state.activeBerryName = null;
+    updateBerryStatus();
 
     const hpFactor = (state.wild.maxHp - state.wild.hp) / state.wild.maxHp;
-    const catchChance = (state.wild.catchRate / 255) * (0.4 + hpFactor * 0.6) + 0.1;
+    let catchChance =
+      (state.wild.catchRate / 255) * (0.4 + hpFactor * 0.6) + 0.1 + berryBonus;
+    catchChance = Math.min(0.95, catchChance);
     const shakes = Math.min(3, Math.floor(catchChance * 4) + (Math.random() < catchChance ? 1 : 0));
 
     let step = 0;
@@ -409,7 +655,10 @@
         battleMenu.classList.remove("hidden");
       }
     };
-    setBattleMessage("You threw a Capy Ball!");
+    const throwMsg = berryUsed
+      ? `You threw a Capy Ball! (boosted by ${berryUsed})`
+      : "You threw a Capy Ball!";
+    setBattleMessage(throwMsg);
     setTimeout(anim, 800);
   }
 
@@ -493,13 +742,16 @@
       card.className = "collection-card" + (state.party[i] ? "" : " empty-slot");
       if (state.party[i]) {
         const mon = state.party[i];
+        const wrap = document.createElement("div");
+        wrap.className = "collection-sprite-wrap";
         const c = document.createElement("canvas");
-        c.width = 120;
-        c.height = 100;
+        c.width = 110;
+        c.height = 96;
         const cctx = c.getContext("2d");
         cctx.imageSmoothingEnabled = false;
-        drawSprite(cctx, mon.spriteCol, mon.spriteRow, 0, 0, 120, 100);
-        card.appendChild(c);
+        drawCenteredCapySprite(cctx, mon.spriteCol, mon.spriteRow, 110, 96, false);
+        wrap.appendChild(c);
+        card.appendChild(wrap);
         const name = document.createElement("div");
         name.className = "name";
         name.textContent = mon.name;
@@ -557,7 +809,7 @@
     } else if (action === "catch") {
       tryCatch();
     } else if (action === "bag") {
-      setBattleMessage(`Capy Balls: ${state.balls}. Use Catch to throw one!`);
+      openBag();
     } else if (action === "run") {
       if (Math.random() < 0.85) {
         setBattleMessage("Got away safely!");
@@ -582,6 +834,10 @@
   });
 
   document.getElementById("close-collection").addEventListener("click", toggleCollection);
+  document.getElementById("bag-close").addEventListener("click", () => {
+    closeBag();
+    setBattleMessage("What will you do?");
+  });
 
   let moveCooldown = 0;
   function gameLoop() {

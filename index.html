@@ -18,21 +18,48 @@
     </header>
     <canvas id="game" width="640" height="480"></canvas>
     <div id="battle-ui" class="hidden">
-      <div class="battle-panel">
-        <div class="battle-header">
-          <div class="wild-info">
-            <span id="wild-name" class="mon-name"></span>
-            <span id="wild-level" class="mon-level"></span>
-            <div class="hp-bar-wrap"><div id="wild-hp" class="hp-bar"></div></div>
+      <div class="battle-screen">
+        <div class="battle-arena">
+          <div class="foe-panel">
+            <div class="mon-hud foe-hud">
+              <div class="hud-top">
+                <span id="wild-name" class="mon-name"></span>
+                <span id="wild-level" class="mon-level"></span>
+              </div>
+              <div class="hp-row">
+                <span class="hp-label">HP</span>
+                <div class="hp-bar-wrap"><div id="wild-hp" class="hp-bar"></div></div>
+              </div>
+              <span id="wild-hp-text" class="hp-text"></span>
+            </div>
+            <div class="sprite-stage foe-stage">
+              <canvas id="wild-sprite" width="160" height="140"></canvas>
+            </div>
           </div>
-          <canvas id="wild-sprite" width="200" height="175"></canvas>
+          <div class="player-panel">
+            <div class="sprite-stage player-stage">
+              <canvas id="ally-sprite" width="120" height="110"></canvas>
+            </div>
+            <div class="mon-hud ally-hud">
+              <div class="hud-top">
+                <span id="ally-name" class="mon-name"></span>
+                <span id="ally-level" class="mon-level"></span>
+              </div>
+              <div class="hp-row">
+                <span class="hp-label">HP</span>
+                <div class="hp-bar-wrap"><div id="ally-hp" class="hp-bar"></div></div>
+              </div>
+              <span id="ally-hp-text" class="hp-text"></span>
+            </div>
+          </div>
         </div>
+        <div id="berry-status" class="berry-status hidden"></div>
         <p id="battle-message" class="battle-msg">A wild capybara appeared!</p>
         <div id="battle-menu" class="battle-menu">
-          <button data-action="fight">Fight</button>
-          <button data-action="catch">Catch</button>
-          <button data-action="bag">Bag</button>
-          <button data-action="run">Run</button>
+          <button data-action="fight" class="menu-btn fight">Fight</button>
+          <button data-action="catch" class="menu-btn catch">Catch</button>
+          <button data-action="bag" class="menu-btn bag">Bag</button>
+          <button data-action="run" class="menu-btn run">Run</button>
         </div>
         <div id="move-menu" class="battle-menu hidden">
           <button data-move="0"></button>
@@ -40,6 +67,21 @@
           <button data-move="2"></button>
           <button data-move="3"></button>
           <button data-action="back" class="back-btn">← Back</button>
+        </div>
+        <div id="bag-ui" class="bag-panel hidden">
+          <div class="bag-header">
+            <h3>Bag</h3>
+            <button id="bag-close" type="button" class="bag-close-btn">✕</button>
+          </div>
+          <p class="bag-hint">Feed a berry before catching, or throw a ball!</p>
+          <section class="bag-section">
+            <h4>Catch Items</h4>
+            <div id="bag-balls" class="bag-grid"></div>
+          </section>
+          <section class="bag-section">
+            <h4>Berries</h4>
+            <div id="bag-berries" class="bag-grid berries-grid"></div>
+          </section>
         </div>
       </div>
     </div>
