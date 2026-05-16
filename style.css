@@ -301,9 +301,24 @@ body {
   background: #f3f4f6;
 }
 
-#move-menu button[data-move] {
+#move-menu button[data-move],
+.move-btn {
   text-align: left;
   font-size: 7px;
+  line-height: 1.5;
+}
+
+.move-btn.type-normal { border-color: #9ca3af; }
+.move-btn.type-grass { border-color: #22c55e; background: #f0fdf4; }
+.move-btn.type-fire { border-color: #ef4444; background: #fef2f2; }
+.move-btn.type-water { border-color: #3b82f6; background: #eff6ff; }
+.move-btn.type-electric { border-color: #eab308; background: #fefce8; }
+.move-btn.type-psychic { border-color: #a855f7; background: #faf5ff; }
+
+.sprite-stage canvas.hit-flash,
+.hit-flash {
+  filter: brightness(2.2) saturate(0.4);
+  transition: filter 0.1s;
 }
 
 /* Bag / inventory */
