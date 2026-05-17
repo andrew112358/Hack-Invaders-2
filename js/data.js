@@ -124,9 +124,69 @@ function getEffectiveness(moveType, defenderType) {
   return chart[defenderType] ?? 1;
 }
 
+const MAX_LEVEL = 50;
+
 function calcStat(base, level) {
   return Math.floor(base * (0.4 + level * 0.06));
 }
+
+function expNeededForLevel(level) {
+  return Math.floor(45 + level * level * 14);
+}
+
+function getSpecies(speciesId) {
+  return CAPY_SPECIES.find((s) => s.id === speciesId) || CAPY_SPECIES[0];
+}
+
+function refreshMonStats(mon, preserveHpRatio) {
+  const species = getSpecies(mon.speciesId);
+  const oldMax = mon.maxHp || 1;
+  const ratio = mon.hp / oldMax;
+  mon.maxHp = calcStat(species.baseHp, mon.level) + 10;
+  mon.atk = calcStat(species.baseAtk, mon.level);
+  mon.def = calcStat(species.baseDef, mon.level);
+  mon.name = species.name;
+  mon.type = species.type;
+  mon.moves = species.moves;
+  mon.spriteCol = species.spriteCol;
+  mon.spriteRow = species.spriteRow;
+  if (preserveHpRatio) {
+    mon.hp = Math.max(1, Math.min(mon.maxHp, Math.ceil(ratio * mon.maxHp)));
+  }
+}
+
+function grantExp(mon, amount) {
+  const messages = [];
+  if (mon.level >= MAX_LEVEL) return messages;
+  mon.exp = (mon.exp || 0) + amount;
+  while (mon.level < MAX_LEVEL && mon.exp >= expNeededForLevel(mon.level)) {
+    mon.exp -= expNeededForLevel(mon.level);
+    mon.level++;
+    refreshMonStats(mon, false);
+    mon.hp = mon.maxHp;
+    messages.push(`${mon.name} grew to Lv.${mon.level}!`);
+  }
+  return messages;
+}
+
+function grantExpToParty(party, amount) {
+  const messages = [];
+  for (const mon of party) {
+    messages.push(...grantExp(mon, amount));
+  }
+  return messages;
+}
+
+const BADGES = {
+  meadow: { id: "meadow", name: "Meadow Badge", color: "#22c55e", icon: "🌿" },
+  desert: { id: "desert", name: "Dune Badge", color: "#f59e0b", icon: "☀️" },
+  beach: { id: "beach", name: "Tide Badge", color: "#3b82f6", icon: "🌊" },
+  forest: { id: "forest", name: "Moss Badge", color: "#15803d", icon: "🍃" },
+  volcano: { id: "volcano", name: "Ember Badge", color: "#ef4444", icon: "🔥" },
+  cave: { id: "cave", name: "Crystal Badge", color: "#a855f7", icon: "💎" },
+  ruins: { id: "ruins", name: "Ruin Badge", color: "#78716c", icon: "🏛️" },
+  marsh: { id: "marsh", name: "Mist Badge", color: "#06b6d4", icon: "🌫️" },
+};
 
 function createWildCapybara(levelOverride, typeBias) {
   let pool = CAPY_SPECIES;
@@ -146,21 +206,28 @@ function createWildCapybara(levelOverride, typeBias) {
     }
   }
   const level = levelOverride ?? 3 + Math.floor(Math.random() * 6);
-  const maxHp = calcStat(species.baseHp, level) + 10;
-  return {
+  const mon = {
     speciesId: species.id,
     name: species.name,
     type: species.type,
     level,
-    hp: maxHp,
-    maxHp,
-    atk: calcStat(species.baseAtk, level),
-    def: calcStat(species.baseDef, level),
+    exp: 0,
+    hp: 0,
+    maxHp: 0,
+    atk: 0,
+    def: 0,
     moves: species.moves,
     spriteCol: species.spriteCol,
     spriteRow: species.spriteRow,
     catchRate: species.catchRate,
   };
+  refreshMonStats(mon, false);
+  mon.hp = mon.maxHp;
+  return mon;
+}
+
+function createTrainerMon(speciesId, level) {
+  return createWildCapybara(level, [speciesId]);
 }
 
 const BERRIES = [
@@ -252,20 +319,26 @@ function getBerryCatchBonus(berryId, wildHp, wildMaxHp) {
 }
 
 function createOwnedCapybara(speciesId, level = 5) {
-  const species = CAPY_SPECIES.find((s) => s.id === speciesId) || CAPY_SPECIES[0];
-  const maxHp = calcStat(species.baseHp, level) + 10;
-  return {
-    speciesId: species.id,
-    name: species.name,
-    type: species.type,
+  const mon = {
+    speciesId,
     level,
-    hp: maxHp,
-    maxHp,
-    atk: calcStat(species.baseAtk, level),
-    def: calcStat(species.baseDef, level),
-    moves: species.moves,
-    spriteCol: species.spriteCol,
-    spriteRow: species.spriteRow,
-    catchRate: species.catchRate,
+    exp: 0,
+    hp: 0,
+    maxHp: 0,
+    atk: 0,
+    def: 0,
+    catchRate: getSpecies(speciesId).catchRate,
+  };
+  refreshMonStats(mon, false);
+  mon.hp = mon.maxHp;
+  return mon;
+}
+
+function getExpProgress(mon) {
+  if (mon.level >= MAX_LEVEL) return { current: 0, needed: 1, maxed: true };
+  return {
+    current: mon.exp || 0,
+    needed: expNeededForLevel(mon.level),
+    maxed: false,
   };
 }

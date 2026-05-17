@@ -1,6 +1,6 @@
 # CapyCatch
 
-A Pokémon-style browser game — explore multiple regions, battle wild capybaras, and catch all six elemental types!
+A Pokémon-style browser game — explore multiple regions, battle wild capybaras and trainers, earn badges, and level up your team!
 
 ## Play
 
@@ -16,40 +16,51 @@ Open [http://localhost:8080](http://localhost:8080) in your browser.
 | Key | Action |
 |-----|--------|
 | WASD / Arrow keys | Walk |
-| Space / Enter | Talk to shop / heal center / pick up items |
-| C or P | Open party — switch lead capybara |
-| Esc | Leave shop or party screen |
+| Space / Enter | Talk, battle trainers, heal, pick up items |
+| C or P | Party — switch lead capybara, view HP/EXP |
+| B | Badge case |
+| Esc | Close menus |
 
-## World map
+## World map (8 regions)
 
-From **Capy Meadows** (start):
+| From | Direction | Area |
+|------|-----------|------|
+| Meadow | Left | Sunscorch Dunes |
+| Meadow | Right | Bubble Bay → Misty Marsh |
+| Meadow | Up | Mosswood Glade → Crystal Caverns |
+| Meadow | Down | Ember Crater |
+| Desert | Up | Ancient Ruins |
 
-| Direction | Area | Notes |
-|-----------|------|--------|
-| **Left** | Sunscorch Dunes | Desert — more fire types |
-| **Right** | Bubble Bay | Beach — water & electric types |
-| **Up** | Mosswood Glade | Forest — grass & psychic types |
-| **Down** | Ember Crater | Volcano — fire & rare spawns |
+Follow paths to map edges (arrow hints).
 
-Follow the paths to the map edges (arrows mark exits).
+## Trainers & badges
 
-## Capy Balls & coins
+- **Red trainers** with **!** want to battle — press **Space** when adjacent.
+- **GYM** trainers (also marked) award a **badge** plus extra coins when defeated.
+- **Catch is disabled** in trainer battles; use Fight, Switch, Bag, or Run.
+- Press **B** to view your badge collection (8 gym badges total).
+- Defeated trainers show a green **✓** and won't rematch.
 
-- **Ground pickups** — Walk over red/white balls (+3–5 balls) or gold coins.
-- **Shops** — Press Space next to a shop NPC in the Meadows or Bubble Bay.
-  - 3 balls — 15 coins
-  - 5 balls — 30 coins
-  - 10 balls — 55 coins
-- You start with **50 coins** and **10 Capy Balls**.
+## Leveling
+
+- All party members gain **EXP** after winning battles (wild or trainer).
+- Trainer battles give bonus EXP and coins.
+- Leveling up **fully restores** that capybara's HP and boosts stats.
+- Max level: **50**. View EXP progress in the party screen (C).
 
 ## Party & healing
 
-- **Party (C or P)** — View your team, HP bars, and click a capybara to set it as your **lead** (first into battle).
-- **Switch in battle** — Use the **Switch** menu option; the wild capybara gets a free attack after you swap.
-- **Healing centers** — Pink **HEAL** signs in Capy Meadows and Bubble Bay. Press **Space** nearby for free full restore (revives fainted capybaras too).
+- **Party (C or P)** — Click a capybara to set your lead.
+- **Switch in battle** — Uses your turn; the foe attacks after.
+- **Healing centers** — Pink **HEAL** signs; free full party restore.
+
+## Shops & items
+
+- Ground pickups: Capy Balls and coins.
+- Shops sell ball bundles for coins.
+- Berries in battle (Bag) boost catch rate on wild capybaras.
 
 ## Gameplay
 
-- Walk through grass for random encounters (rates vary by region).
-- In battle: Fight, Catch, Bag, Switch, or Run.
-- Catch all six: Capybuddy, Mossbara, Emberbara, Voltbara, Aquabara, Zenbara.
+- Walk through grass for wild encounters.
+- Catch all six species: Capybuddy, Mossbara, Emberbara, Voltbara, Aquabara, Zenbara.

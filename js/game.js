@@ -47,6 +47,10 @@
   const shopItemsEl = document.getElementById("shop-items");
   const switchMenu = document.getElementById("switch-menu");
   const switchList = document.getElementById("switch-list");
+  const badgesCountEl = document.getElementById("badges-count");
+  const badgesPanel = document.getElementById("badges-panel");
+  const badgesGrid = document.getElementById("badges-grid");
+  const catchBtn = document.querySelector('[data-action="catch"]');
 
   const state = {
     mode: "overworld",
@@ -76,6 +80,12 @@
     introDone: false,
     shakeTimer: 0,
     animTick: 0,
+    battleType: "wild",
+    trainer: null,
+    trainerTeam: [],
+    trainerMonIndex: 0,
+    defeatedTrainers: new Set(),
+    badges: [],
   };
 
   function isWalkable(tile) {
@@ -482,7 +492,32 @@
     }
   }
 
+  function isTrainerDefeated(npc) {
+    return npc.id && state.defeatedTrainers.has(npc.id);
+  }
+
   function drawNpc(px, py, npc) {
+    if (npc.type === "trainer") {
+      const defeated = isTrainerDefeated(npc);
+      ctx.fillStyle = defeated ? "#6b7280" : "#dc2626";
+      ctx.fillRect(px + 8, py + 10, 16, 18);
+      ctx.fillStyle = "#f5c6a5";
+      ctx.fillRect(px + 10, py + 4, 12, 10);
+      ctx.fillStyle = "#fff";
+      ctx.font = "10px 'Press Start 2P', monospace";
+      ctx.textAlign = "center";
+      if (defeated) {
+        ctx.fillStyle = "#4ade80";
+        ctx.fillText("✓", px + TILE / 2, py - 2);
+      } else {
+        ctx.fillStyle = "#fef08a";
+        ctx.fillText("!", px + TILE / 2, py - 4);
+        ctx.fillStyle = "#fff";
+        ctx.font = "5px 'Press Start 2P', monospace";
+        ctx.fillText(npc.badge ? "GYM" : "PKR", px + TILE / 2, py + 6);
+      }
+      return;
+    }
     ctx.fillStyle = "#8b4513";
     ctx.fillRect(px + 8, py + 10, 16, 18);
     ctx.fillStyle = "#f5c6a5";
@@ -597,7 +632,11 @@
       ctx.fillStyle = "#7fdbca";
       ctx.font = "8px 'Press Start 2P', monospace";
       ctx.textAlign = "center";
-      const verb = nearNpc.type === "heal" ? "heal at" : "visit";
+      let verb = "visit";
+      if (nearNpc.type === "heal") verb = "heal at";
+      else if (nearNpc.type === "trainer") {
+        verb = isTrainerDefeated(nearNpc) ? "talk to" : "battle";
+      }
       ctx.fillText(`Space — ${verb} ${nearNpc.name}`, canvas.width / 2, canvas.height - 10);
     }
 
@@ -613,6 +652,21 @@
     if (ballsCountEl) ballsCountEl.textContent = `Capy Balls: ${state.balls}`;
     if (coinsCountEl) coinsCountEl.textContent = `Coins: ${state.coins}`;
     if (shopCoinCount) shopCoinCount.textContent = state.coins;
+    if (badgesCountEl) {
+      badgesCountEl.textContent = `Badges: ${state.badges.length}/${Object.keys(BADGES).length}`;
+    }
+    updateCatchButton();
+  }
+
+  function updateCatchButton() {
+    if (!catchBtn) return;
+    const trainerBattle = state.battleType === "trainer";
+    catchBtn.disabled = trainerBattle;
+    catchBtn.style.opacity = trainerBattle ? "0.4" : "1";
+  }
+
+  function isTrainerBattle() {
+    return state.battleType === "trainer";
   }
 
   function focusGame() {
@@ -662,6 +716,9 @@
 
   function pickWildEncounter() {
     const area = getArea(state.areaId);
+    state.battleType = "wild";
+    state.trainer = null;
+    state.trainerTeam = [];
     state.wild = createWildCapybara(null, area.encounterTypes);
     state.activeMon = getLeadBattler();
     state.battlePhase = "menu";
@@ -669,6 +726,28 @@
     state.activeBerryBonus = 0;
     state.activeBerryName = null;
     startBattle();
+  }
+
+  function startTrainerBattle(npc) {
+    if (isTrainerDefeated(npc)) {
+      showDialog([`${npc.name} was already defeated.`, "You're the champion here now!"]);
+      return;
+    }
+    if (!state.party.some((m) => m.hp > 0)) {
+      showDialog(["Your party can't fight!", "Heal up at a Capy Care Center first."]);
+      return;
+    }
+    state.battleType = "trainer";
+    state.trainer = npc;
+    state.trainerTeam = npc.team.map((t) => createTrainerMon(t.speciesId, t.level));
+    state.trainerMonIndex = 0;
+    state.wild = state.trainerTeam[0];
+    state.activeMon = getLeadBattler();
+    state.battlePhase = "menu";
+    state.activeBerryBonus = 0;
+    state.activeBerryName = null;
+    startBattle();
+    setBattleMessage(`${npc.name} wants to battle!`);
   }
 
   function startBattle() {
@@ -680,7 +759,9 @@
     moveMenu.classList.add("hidden");
     closeBag();
     updateBattleUi();
-    setBattleMessage(`Wild ${state.wild.name} appeared!`);
+    if (state.battleType === "wild") {
+      setBattleMessage(`Wild ${state.wild.name} appeared!`);
+    }
   }
 
   function endBattle() {
@@ -690,9 +771,14 @@
     state.mode = "overworld";
     state.wild = null;
     state.battlePhase = "menu";
+    state.battleType = "wild";
+    state.trainer = null;
+    state.trainerTeam = [];
+    state.trainerMonIndex = 0;
     state.activeBerryBonus = 0;
     state.activeBerryName = null;
     wildSpriteCanvas.style.transform = "";
+    updateCatchButton();
   }
 
   function updateBattleUi() {
@@ -714,7 +800,9 @@
     const ally = state.activeMon;
     if (ally) {
       allyNameEl.textContent = ally.name;
-      allyLevelEl.textContent = `Lv.${ally.level} · ${ally.type.toUpperCase()}`;
+      const expP = getExpProgress(ally);
+      const expLabel = expP.maxed ? "MAX" : ` · ${expP.current}/${expP.needed} EXP`;
+      allyLevelEl.textContent = `Lv.${ally.level} · ${ally.type.toUpperCase()}${expLabel}`;
       setHpBar(allyHpEl, ally.hp, ally.maxHp);
       allyHpTextEl.textContent = `${ally.hp} / ${ally.maxHp}`;
       drawCenteredCapySprite(
@@ -754,6 +842,10 @@
     });
     updateBerryStatus();
     updateHud();
+    updateCatchButton();
+    if (isTrainerBattle() && state.trainer) {
+      wildNameEl.textContent = state.trainer.name + "'s " + w.name;
+    }
   }
 
   function openBag() {
@@ -1063,17 +1155,65 @@
     updateBattleUi();
   }
 
-  async function handleWildFainted() {
+  async function handleFoeFainted() {
+    if (isTrainerBattle()) {
+      await handleTrainerFoeFainted();
+      return;
+    }
     const name = state.wild.name;
     const exp = Math.floor(state.wild.level * 15 + 8);
     setBattleMessage(`${name} fainted!`);
     updateBattleUi();
     await delay(900);
+    const levelUps = grantExpToParty(state.party, exp);
     endBattle();
-    const expMsg = state.activeMon
-      ? `${state.activeMon.name} gained ${exp} EXP!`
-      : `Your team gained ${exp} EXP!`;
-    showDialog([`You defeated wild ${name}!`, expMsg]);
+    const lines = [`You defeated wild ${name}!`, `The party gained ${exp} EXP!`];
+    lines.push(...levelUps.slice(0, 4));
+    if (levelUps.length > 4) lines.push("...");
+    showDialog(lines);
+  }
+
+  async function handleTrainerFoeFainted() {
+    const name = state.wild.name;
+    const exp = Math.floor(state.wild.level * 22 + 20);
+    setBattleMessage(`${name} fainted!`);
+    updateBattleUi();
+    await delay(900);
+    const levelUps = grantExpToParty(state.party, exp);
+
+    state.trainerMonIndex++;
+    if (state.trainerMonIndex < state.trainerTeam.length) {
+      state.wild = state.trainerTeam[state.trainerMonIndex];
+      resetBattler(state.wild);
+      setBattleMessage(`${state.trainer.name} sent out ${state.wild.name}!`);
+      updateBattleUi();
+      await delay(BATTLE_DELAY);
+      unlockBattleMenu();
+      setBattleMessage("What will you do?");
+      return;
+    }
+
+    const t = state.trainer;
+    state.defeatedTrainers.add(t.id);
+    const coins = t.reward?.coins || 40;
+    state.coins += coins;
+    updateHud();
+
+    let badgeLine = null;
+    if (t.badge && !state.badges.includes(t.badge) && BADGES[t.badge]) {
+      state.badges.push(t.badge);
+      badgeLine = `You earned the ${BADGES[t.badge].icon} ${BADGES[t.badge].name}!`;
+    }
+
+    endBattle();
+    const lines = [
+      `You defeated ${t.name}!`,
+      `Won ${coins} coins!`,
+      `The party gained ${exp} EXP!`,
+    ];
+    lines.push(...levelUps.slice(0, 3));
+    if (badgeLine) lines.push(badgeLine);
+    showDialog(lines);
   }
 
   async function handleAllyFainted() {
@@ -1094,11 +1234,17 @@
       return;
     }
 
+    const wasTrainer = isTrainerBattle();
+    const trainerName = state.trainer?.name;
     endBattle();
-    showDialog([
+    const lines = [
       "All your capybaras fainted!",
       "Visit a Capy Care Center (pink HEAL sign) to recover.",
-    ]);
+    ];
+    if (wasTrainer && trainerName) {
+      lines.unshift(`You lost to ${trainerName}...`);
+    }
+    showDialog(lines);
   }
 
   function switchToHealthyMon() {
@@ -1114,6 +1260,10 @@
 
   function tryCatch() {
     if (state.battlePhase === "animating") return;
+    if (isTrainerBattle()) {
+      setBattleMessage("You can't catch another trainer's capybara!");
+      return;
+    }
     if (state.balls <= 0) {
       setBattleMessage("You're out of Capy Balls! Visit a shop or find pickups.");
       return;
@@ -1152,7 +1302,9 @@
         wildSpriteCanvas.style.transform = "";
         const caughtName = state.wild.name;
         setBattleMessage(`Gotcha! ${caughtName} was caught!`);
-        state.party.push({ ...state.wild, hp: state.wild.maxHp });
+        const caught = { ...state.wild, hp: state.wild.maxHp, exp: 0 };
+        refreshMonStats(caught, false);
+        state.party.push(caught);
         const count = state.party.length;
         setTimeout(() => {
           endBattle();
@@ -1189,7 +1341,7 @@
     await delay(BATTLE_DELAY);
 
     if (state.wild.hp <= 0) {
-      await handleWildFainted();
+      await handleFoeFainted();
       return;
     }
 
@@ -1261,6 +1413,7 @@
     if (npc) {
       if (npc.type === "shop") openShop(npc);
       else if (npc.type === "heal") openHealCenter(npc);
+      else if (npc.type === "trainer") startTrainerBattle(npc);
       return;
     }
 
@@ -1377,6 +1530,23 @@
         hpWrap.appendChild(hpBar);
         card.appendChild(hpWrap);
 
+        const expProg = getExpProgress(mon);
+        const expText = document.createElement("div");
+        expText.className = "collection-exp";
+        expText.textContent = expProg.maxed
+          ? "MAX LEVEL"
+          : `EXP ${expProg.current}/${expProg.needed}`;
+        card.appendChild(expText);
+        if (!expProg.maxed) {
+          const expWrap = document.createElement("div");
+          expWrap.className = "collection-exp-bar-wrap";
+          const expBar = document.createElement("div");
+          expBar.className = "collection-exp-bar";
+          expBar.style.width = `${(expProg.current / expProg.needed) * 100}%`;
+          expWrap.appendChild(expBar);
+          card.appendChild(expWrap);
+        }
+
         card.addEventListener("click", () => {
           if (mon.hp <= 0) {
             showDialog([`${mon.name} has fainted!`, "Visit a Capy Care Center to heal."]);
@@ -1394,6 +1564,9 @@
   }
 
   function toggleCollection() {
+    if (badgesPanel && !badgesPanel.classList.contains("hidden")) {
+      badgesPanel.classList.add("hidden");
+    }
     if (collectionEl.classList.contains("hidden")) {
       renderCollection();
       collectionEl.classList.remove("hidden");
@@ -1401,6 +1574,41 @@
       clearKeys();
     } else {
       collectionEl.classList.add("hidden");
+      state.mode = "overworld";
+      clearKeys();
+      focusGame();
+    }
+  }
+
+  function renderBadges() {
+    if (!badgesGrid) return;
+    badgesGrid.innerHTML = "";
+    for (const key of Object.keys(BADGES)) {
+      const badge = BADGES[key];
+      const earned = state.badges.includes(key);
+      const card = document.createElement("div");
+      card.className = "badge-card" + (earned ? " earned" : "");
+      card.innerHTML = `
+        <span class="badge-card-icon">${badge.icon}</span>
+        <span class="badge-card-name">${badge.name}</span>
+        <span class="badge-card-area">${earned ? "Earned!" : "Not yet earned"}</span>
+      `;
+      if (earned) card.style.borderColor = badge.color;
+      badgesGrid.appendChild(card);
+    }
+  }
+
+  function toggleBadges() {
+    if (collectionEl && !collectionEl.classList.contains("hidden")) {
+      collectionEl.classList.add("hidden");
+    }
+    if (badgesPanel.classList.contains("hidden")) {
+      renderBadges();
+      badgesPanel.classList.remove("hidden");
+      state.mode = "badges";
+      clearKeys();
+    } else {
+      badgesPanel.classList.add("hidden");
       state.mode = "overworld";
       clearKeys();
       focusGame();
@@ -1428,12 +1636,19 @@
       toggleCollection();
       e.preventDefault();
     }
+    if (e.code === "KeyB" && state.mode !== "battle" && state.mode !== "shop") {
+      toggleBadges();
+      e.preventDefault();
+    }
     if (e.code === "Escape") {
       if (state.mode === "shop") {
         closeShop();
         e.preventDefault();
       } else if (state.mode === "collection") {
         toggleCollection();
+        e.preventDefault();
+      } else if (state.mode === "badges") {
+        toggleBadges();
         e.preventDefault();
       }
     }
@@ -1504,6 +1719,7 @@
   });
 
   document.getElementById("close-collection").addEventListener("click", toggleCollection);
+  document.getElementById("close-badges")?.addEventListener("click", toggleBadges);
   document.getElementById("bag-close").addEventListener("click", () => {
     closeBag();
     setBattleMessage("What will you do?");
@@ -1559,8 +1775,8 @@
     showDialog(
       [
         "Welcome to CapyCatch!",
-        "Walk LEFT to Sunscorch Dunes. UP = forest, DOWN = volcano, RIGHT = beach.",
-        "Press C or P for your party. Pink HEAL centers restore HP. Good luck!",
+        "8 regions to explore! Battle trainers (red !) for coins & badges.",
+        "Press C for party, B for badges. Pink HEAL restores your team. Good luck!",
       ],
       () => {
         const starter = createOwnedCapybara("normal", 5);

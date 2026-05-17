@@ -731,6 +731,106 @@ body {
   background: #a8f0e0;
 }
 
+.collection-exp {
+  font-size: 5px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.collection-exp-bar-wrap {
+  width: 100%;
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+  margin-top: 3px;
+  overflow: hidden;
+}
+
+.collection-exp-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #7c3aed, #a855f7);
+}
+
+#badges-count {
+  color: #ffd700;
+}
+
+.badges-panel {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.88);
+  z-index: 210;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.badges-panel h2 {
+  font-size: 12px;
+  color: #ffd700;
+  margin-bottom: 8px;
+}
+
+.badges-hint {
+  font-size: 7px;
+  color: #7fdbca;
+  margin-bottom: 20px;
+}
+
+.badges-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  max-width: 640px;
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.badge-card {
+  background: #2a2a3a;
+  border: 3px solid #555;
+  border-radius: 8px;
+  padding: 14px;
+  text-align: center;
+  opacity: 0.45;
+}
+
+.badge-card.earned {
+  opacity: 1;
+  border-color: #ffd700;
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.25);
+}
+
+.badge-card-icon {
+  font-size: 24px;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.badge-card-name {
+  font-size: 7px;
+  color: #fff;
+}
+
+.badge-card-area {
+  font-size: 5px;
+  color: #888;
+  margin-top: 4px;
+}
+
+#close-badges {
+  font-family: inherit;
+  font-size: 8px;
+  padding: 12px 24px;
+  background: #ffd700;
+  color: #1a1a2e;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 /* Shop */
 .shop {
   position: fixed;

@@ -16,6 +16,7 @@
       <span id="party-count">Party: 0</span>
       <span id="balls-count">Capy Balls: 10</span>
       <span id="coins-count">Coins: 50</span>
+      <span id="badges-count">Badges: 0/8</span>
     </header>
     <canvas id="game" width="640" height="480" tabindex="0"></canvas>
     <div id="battle-ui" class="hidden">
@@ -108,10 +109,16 @@
       <div id="collection-grid"></div>
       <button id="close-collection">Close (C / P / Esc)</button>
     </div>
+    <div id="badges-panel" class="badges-panel hidden">
+      <h2>Gym Badges</h2>
+      <p class="badges-hint">Defeat gym leaders across the world!</p>
+      <div id="badges-grid" class="badges-grid"></div>
+      <button id="close-badges">Close (B / Esc)</button>
+    </div>
     <footer class="controls-hint">
       <span>Move: WASD / Arrows</span>
-      <span>Party: C or P</span>
-      <span>Talk / Heal: Space</span>
+      <span>Party: C · Badges: B</span>
+      <span>Battle / Heal: Space</span>
     </footer>
   </div>
   <script src="js/data.js"></script>
